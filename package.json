@@ -1,6 +1,6 @@
 {
   "name": "openflow",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code sessions from a web UI",
   "type": "module",
   "scripts": {

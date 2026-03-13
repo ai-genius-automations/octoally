@@ -281,6 +281,25 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       output.push('[hive-mind init] ' + (err.message || 'skipped'));
     }
 
+    // Migrate old relative hook paths to $CLAUDE_PROJECT_DIR (ruflo 3.5.15+ fix)
+    const settingsPath = join(project.path, '.claude', 'settings.json');
+    if (existsSync(settingsPath)) {
+      try {
+        let settings = readFileSync(settingsPath, 'utf-8');
+        const oldSettings = settings;
+        // Fix relative node .claude/ paths → $CLAUDE_PROJECT_DIR/.claude/
+        settings = settings.replace(/("node )(\.claude\/)/g, '$1$CLAUDE_PROJECT_DIR/.claude/');
+        // Fix relative find/rm .swarm/ paths → $CLAUDE_PROJECT_DIR/.swarm/
+        settings = settings.replace(/(find |rm -f )(\.swarm\/)/g, '$1$CLAUDE_PROJECT_DIR/.swarm/');
+        if (settings !== oldSettings) {
+          writeFileSync(settingsPath, settings, 'utf-8');
+          output.push('[migrate] Patched relative hook paths → $CLAUDE_PROJECT_DIR');
+        }
+      } catch {
+        // Non-fatal — settings file may be malformed
+      }
+    }
+
     // Clean up stale claude-flow.config.json (ruflo uses .claude-flow/config.yaml now)
     const staleConfig = join(project.path, 'claude-flow.config.json');
     const newConfig = join(project.path, '.claude-flow', 'config.yaml');
