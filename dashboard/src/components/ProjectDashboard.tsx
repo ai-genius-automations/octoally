@@ -1504,6 +1504,21 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                           Failed - retry?
                         </span>
                       )}
+                      {cfStatus?.installed && (
+                        <button
+                          onClick={() => handleRufloInstall(project.id)}
+                          disabled={isInstalling}
+                          className="flex items-center gap-1 p-1.5 rounded-lg border text-xs"
+                          style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: isInstalling ? '#facc15' : 'var(--text-secondary)' }}
+                          title={isInstalling ? 'Re-initializing RuFlo...' : 'Re-init RuFlo (update agents + memory)'}
+                        >
+                          {isInstalling ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={() => api.openFolder(project.path)}
                         className="p-1.5 rounded-lg border text-xs"
@@ -1565,9 +1580,9 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
 
       {rufloConfirm && (
         <ConfirmModal
-          title="Install RuFlo"
+          title="Install / Re-init RuFlo"
           message={`This project has existing config files that will be replaced:\n${rufloConfirm.conflicts.settingsJson ? '• .claude/settings.json\n' : ''}${rufloConfirm.conflicts.claudeMd ? '• CLAUDE.md\n' : ''}\nBackups will be created with a .bak extension before overwriting.`}
-          confirmLabel="Install & Backup"
+          confirmLabel="Continue & Backup"
           variant="danger"
           onConfirm={() => {
             installMutation.mutate(rufloConfirm.id);
