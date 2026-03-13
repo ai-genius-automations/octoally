@@ -23,6 +23,13 @@ set -euo pipefail
 INSTALL_DIR="${OPENFLOW_INSTALL_DIR:-$HOME/openflow}"
 GITHUB_REPO="${OPENFLOW_GITHUB_REPO:-ai-genius-automations/openflow}"
 VERSION="${OPENFLOW_VERSION:-latest}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
+# Build auth header array for curl (used for private repo access)
+AUTH_HEADER=()
+if [ -n "$GITHUB_TOKEN" ]; then
+  AUTH_HEADER=(-H "Authorization: token $GITHUB_TOKEN")
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -231,9 +238,9 @@ if [ -z "$ARCHIVE_URL" ]; then
   # Resolve version from GitHub Releases API
   if [ "$VERSION" = "latest" ]; then
     log_info "Fetching latest release from GitHub..."
-    RELEASE_INFO=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null || echo "")
+    RELEASE_INFO=$(curl -sf "${AUTH_HEADER[@]}" "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null || echo "")
     if [ -z "$RELEASE_INFO" ]; then
-      RELEASE_INFO=$(curl -sf "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | node -e '
+      RELEASE_INFO=$(curl -sf "${AUTH_HEADER[@]}" "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | node -e '
         let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
           try{const a=JSON.parse(d);if(a[0])console.log(JSON.stringify(a[0]))}catch{}
         })' 2>/dev/null || echo "")
@@ -243,14 +250,25 @@ if [ -z "$ARCHIVE_URL" ]; then
       exit 1
     fi
     VERSION=$(echo "$RELEASE_INFO" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).tag_name.replace(/^v/,""))}catch{process.exit(1)}})' 2>/dev/null)
+
+    # For private repos, extract the API asset URL (browser_download_url won't work with token)
+    if [ -n "$GITHUB_TOKEN" ]; then
+      ARCHIVE_URL=$(echo "$RELEASE_INFO" | node -e '
+        let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
+          try{const r=JSON.parse(d);const a=(r.assets||[]).find(x=>x.name.endsWith(".tar.gz"));
+          if(a)console.log(a.url);else process.exit(1)}catch{process.exit(1)}
+        })' 2>/dev/null || echo "")
+    fi
   fi
 
-  ARCHIVE_URL="https://github.com/$GITHUB_REPO/releases/download/v${VERSION}/openflow-v${VERSION}.tar.gz"
+  if [ -z "$ARCHIVE_URL" ]; then
+    ARCHIVE_URL="https://github.com/$GITHUB_REPO/releases/download/v${VERSION}/openflow-v${VERSION}.tar.gz"
+  fi
 fi
 
 TMPFILE=$(mktemp)
 log_info "Downloading $ARCHIVE_URL..."
-if ! curl -fSL --progress-bar -o "$TMPFILE" "$ARCHIVE_URL" 2>&1; then
+if ! curl -fSL "${AUTH_HEADER[@]}" -H "Accept: application/octet-stream" --progress-bar -o "$TMPFILE" "$ARCHIVE_URL" 2>&1; then
   rm -f "$TMPFILE"
   log_error "Download failed. Check the URL or version and try again."
   exit 1
@@ -385,7 +403,7 @@ if [ "$DESKTOP_SUPPORTED" = true ] && [ -n "$DESKTOP_URL" ]; then
     [ -f "$local_path" ] && DESKTOP_AVAILABLE=true
   else
     # Remote URL — check with HEAD request
-    if curl -sfIL --max-time 5 "$DESKTOP_URL" >/dev/null 2>&1; then
+    if curl -sfIL "${AUTH_HEADER[@]}" --max-time 5 "$DESKTOP_URL" >/dev/null 2>&1; then
       DESKTOP_AVAILABLE=true
     fi
   fi
@@ -395,7 +413,7 @@ install_desktop_app() {
   local TMPDESKTOP
   TMPDESKTOP=$(mktemp)
   log_info "Downloading desktop app..."
-  if ! curl -fSL --progress-bar -o "$TMPDESKTOP" "$DESKTOP_URL" 2>&1; then
+  if ! curl -fSL "${AUTH_HEADER[@]}" -H "Accept: application/octet-stream" --progress-bar -o "$TMPDESKTOP" "$DESKTOP_URL" 2>&1; then
     rm -f "$TMPDESKTOP"
     log_warn "Desktop app download failed — skipping (you can install it later)"
     return 0

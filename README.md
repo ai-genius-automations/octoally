@@ -38,6 +38,13 @@
 
 ## 📦 Quick Install
 
+### Supported Platforms
+
+| Platform | Status |
+|----------|--------|
+| **Linux** (Ubuntu/Debian) | ✅ Fully supported |
+| **macOS** | 🔜 Coming soon |
+
 ### Prerequisites
 
 | Requirement | Why | Install |
