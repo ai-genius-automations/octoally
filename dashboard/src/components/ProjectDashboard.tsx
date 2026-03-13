@@ -1388,13 +1388,18 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
           <div className="flex flex-col gap-6">
             {(() => {
               const cfStatuses = cfStatusData?.statuses || {};
-              const cfProjects = projects.filter(p => cfStatuses[p.id]?.installed);
-              const otherProjects = projects.filter(p => !cfStatuses[p.id]?.installed);
+              const dctxStatuses = dctxStatusData?.statuses || {};
+              const dctxGlobal = dctxStatusData?.globalInstalled ?? false;
+
+              // Categorize: DevCortex (includes ruflo) → RuFlo only → Other
+              const devcortexProjects = projects.filter(p => dctxGlobal && dctxStatuses[p.id]?.installed);
+              const rufloOnlyProjects = projects.filter(p => cfStatuses[p.id]?.installed && !(dctxGlobal && dctxStatuses[p.id]?.installed));
+              const otherProjects = projects.filter(p => !cfStatuses[p.id]?.installed && !(dctxGlobal && dctxStatuses[p.id]?.installed));
 
               const groups: { label: string; color: string; icon: typeof Folder; items: typeof projects }[] = [];
-              if (cfProjects.length > 0) groups.push({ label: 'RuFlo Projects', color: '#60a5fa', icon: Zap, items: cfProjects });
+              if (devcortexProjects.length > 0) groups.push({ label: 'DevCortex Projects', color: '#a855f7', icon: Brain, items: devcortexProjects });
+              if (rufloOnlyProjects.length > 0) groups.push({ label: 'RuFlo Projects', color: '#60a5fa', icon: Zap, items: rufloOnlyProjects });
               if (otherProjects.length > 0) groups.push({ label: 'Projects', color: 'var(--text-secondary)', icon: Folder, items: otherProjects });
-              // If all projects have CF, still show the group
               if (groups.length === 0) groups.push({ label: 'Projects', color: 'var(--text-secondary)', icon: Folder, items: projects });
 
               return groups.map((group, gi) => (
@@ -1417,32 +1422,27 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                   style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
                   onClick={() => onOpenProject(project.id, project.name)}
                 >
-                  {/* RuFlo / DevCortex status bar */}
-                  {(cfStatus?.installed || (dctxStatusData?.globalInstalled && dctxStatusData?.statuses?.[project.id]?.installed)) && (
+                  {/* RuFlo / DevCortex status bar — DevCortex supersedes RuFlo (it includes it) */}
+                  {(() => {
+                    const hasDctx = dctxGlobal && dctxStatuses[project.id]?.installed;
+                    const hasRuflo = cfStatus?.installed;
+                    if (!hasRuflo && !hasDctx) return null;
+                    const color = hasDctx ? '#a855f7' : '#60a5fa';
+                    const label = hasDctx ? 'DevCortex' : 'RuFlo';
+                    const Icon = hasDctx ? Brain : Zap;
+                    const version = hasDctx ? dctxStatuses[project.id]?.version : cfStatus?.version;
+                    return (
                     <div
                       className="flex items-center gap-1.5 px-4 py-2"
-                      style={{ background: cfStatus?.installed ? '#3b82f615' : '#a855f715', borderBottom: `1px solid ${cfStatus?.installed ? '#3b82f640' : '#a855f740'}` }}
+                      style={{ background: `${color}15`, borderBottom: `1px solid ${color}40` }}
                     >
-                      {cfStatus?.installed && (
-                        <>
-                          <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
-                          <span className="text-xs font-semibold truncate" style={{ color: '#60a5fa' }}>
-                            RuFlo
-                          </span>
-                        </>
-                      )}
-                      {dctxStatusData?.globalInstalled && dctxStatusData?.statuses?.[project.id]?.installed && (
-                        <>
-                          {cfStatus?.installed && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>+</span>}
-                          <Brain className="w-3 h-3 shrink-0" style={{ color: '#a855f7' }} />
-                          <span className="text-xs font-semibold truncate" style={{ color: '#a855f7' }}>
-                            DevCortex
-                          </span>
-                        </>
-                      )}
-                      {cfStatus?.version && (
-                        <span className="text-[10px] font-mono shrink-0" style={{ color: '#60a5fa', opacity: 0.7 }}>
-                          v{cfStatus.version}
+                      <Icon className="w-3 h-3 shrink-0" style={{ color }} />
+                      <span className="text-xs font-semibold truncate" style={{ color }}>
+                        {label}
+                      </span>
+                      {version && (
+                        <span className="text-[10px] font-mono shrink-0" style={{ color, opacity: 0.7 }}>
+                          v{version}
                         </span>
                       )}
                       {(() => {
@@ -1465,7 +1465,8 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                         );
                       })()}
                     </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="p-5 flex flex-col gap-3 flex-1">
                     <div className="flex items-start justify-between">

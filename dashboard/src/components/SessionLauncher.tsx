@@ -262,6 +262,7 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
   const devcortexStatus = devcortexData?.statuses?.[project.id];
   const devcortexInstalled = devcortexStatus?.installed ?? false;
   const devcortexEligible = devcortexStatus?.eligible ?? false;
+  const devcortexVersion = devcortexStatus?.version;
 
   const devcortexInstallMutation = useMutation({
     mutationFn: (id: string) => api.projects.devcortexInstall(id),
@@ -438,14 +439,14 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
                     disabled={devcortexPending}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
                     style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)' }}
-                    title="Remove DevCortex from this project"
+                    title={`DevCortex${devcortexVersion ? ` v${devcortexVersion}` : ''} — click to remove`}
                   >
                     {devcortexPending ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
                       <Brain className="w-3 h-3" />
                     )}
-                    DevCortex Active
+                    DevCortex{devcortexVersion ? ` v${devcortexVersion}` : ''}
                   </button>
                 ) : (
                   <button
