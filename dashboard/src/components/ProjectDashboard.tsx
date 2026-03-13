@@ -1222,7 +1222,7 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
     queryKey: ['ruflo-status'],
     queryFn: () => api.projects.rufloStatus(),
     enabled: projects.length > 0,
-    staleTime: 60_000, // Cache for 1 minute - file checks are cheap but no need to spam
+    staleTime: 5_000, // Short cache so install status updates quickly
   });
 
   const [installingId, setInstallingId] = useState<string | null>(null);

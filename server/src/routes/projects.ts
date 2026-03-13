@@ -253,11 +253,20 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
     try {
       const result = await execFileAsync(npx, ['ruflo@latest', 'init', '--force', '--start-all'], opts);
       output.push('[ruflo init] ' + (result.stdout || 'done'));
-      return { ok: true, output: output.join('\n') };
     } catch (err: any) {
       output.push('[error] ' + (err.message || String(err)));
       return reply.status(500).send({ ok: false, output: output.join('\n'), error: err.message });
     }
+
+    // Initialize hive-mind (ruflo init doesn't do this automatically)
+    try {
+      const hmResult = await execFileAsync(npx, ['ruflo@latest', 'hive-mind', 'init'], opts);
+      output.push('[hive-mind init] ' + (hmResult.stdout || 'done'));
+    } catch (err: any) {
+      output.push('[hive-mind init] ' + (err.message || 'skipped'));
+    }
+
+    return { ok: true, output: output.join('\n') };
   });
 
   // List available ruflo agent types for a project (reads .claude/agents/*.md frontmatter)
