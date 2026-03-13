@@ -281,6 +281,15 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       output.push('[hive-mind init] ' + (err.message || 'skipped'));
     }
 
+    // Clean up stale claude-flow.config.json (ruflo uses .claude-flow/config.yaml now)
+    const staleConfig = join(project.path, 'claude-flow.config.json');
+    const newConfig = join(project.path, '.claude-flow', 'config.yaml');
+    if (existsSync(staleConfig) && existsSync(newConfig)) {
+      const { unlink } = await import('fs/promises');
+      await unlink(staleConfig);
+      output.push('[cleanup] Removed stale claude-flow.config.json');
+    }
+
     return { ok: true, output: output.join('\n') };
   });
 
