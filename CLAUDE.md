@@ -10,6 +10,7 @@
 - Never continuously check status after spawning a swarm — wait for results
 - ALWAYS read a file before editing it
 - NEVER commit secrets, credentials, or .env files
+- NEVER add Co-Authored-By trailers to commit messages
 
 ## File Organization
 
