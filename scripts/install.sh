@@ -258,15 +258,19 @@ if [ -z "$ARCHIVE_URL" ]; then
       exit 1
     fi
     VERSION=$(echo "$RELEASE_INFO" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).tag_name.replace(/^v/,""))}catch{process.exit(1)}})' 2>/dev/null)
+  elif [ -n "$GITHUB_TOKEN" ]; then
+    # Explicit version with token — fetch release info for API asset URL (CDN won't work for private repos)
+    log_info "Fetching release v${VERSION} from GitHub API..."
+    RELEASE_INFO=$(curl -sf "${AUTH_HEADER[@]}" "https://api.github.com/repos/$GITHUB_REPO/releases/tags/v${VERSION}" 2>/dev/null || echo "")
+  fi
 
-    # For private repos, extract the API asset URL (browser_download_url won't work with token)
-    if [ -n "$GITHUB_TOKEN" ]; then
-      ARCHIVE_URL=$(echo "$RELEASE_INFO" | node -e '
-        let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
-          try{const r=JSON.parse(d);const a=(r.assets||[]).find(x=>x.name.endsWith(".tar.gz"));
-          if(a)console.log(a.url);else process.exit(1)}catch{process.exit(1)}
-        })' 2>/dev/null || echo "")
-    fi
+  # For private repos, extract the API asset URL (browser_download_url / CDN won't work with token)
+  if [ -n "$GITHUB_TOKEN" ] && [ -n "${RELEASE_INFO:-}" ]; then
+    ARCHIVE_URL=$(echo "$RELEASE_INFO" | node -e '
+      let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
+        try{const r=JSON.parse(d);const a=(r.assets||[]).find(x=>x.name.endsWith(".tar.gz"));
+        if(a)console.log(a.url);else process.exit(1)}catch{process.exit(1)}
+      })' 2>/dev/null || echo "")
   fi
 
   if [ -z "$ARCHIVE_URL" ]; then
