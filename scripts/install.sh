@@ -55,34 +55,87 @@ OS="$(uname -s)"
 
 log_step 1 "Checking prerequisites..."
 
+# Helper: prompt user to install something or exit
+prompt_install() {
+  local name="$1"
+  local install_msg="$2"
+  if [ -t 0 ] && [ -t 1 ]; then
+    echo ""
+    echo -n "  $name is required. Install it now? [Y/n]: "
+    read -r answer < /dev/tty 2>/dev/null || answer="y"
+    case "$answer" in
+      [nN]|[nN][oO])
+        log_error "$name is required to continue. Install it and re-run this installer."
+        exit 1
+        ;;
+    esac
+    return 0  # user said yes
+  else
+    # Non-interactive — can't prompt
+    log_error "$name is required but not installed."
+    echo ""
+    echo "  $install_msg"
+    echo "  Then re-run this installer."
+    echo ""
+    exit 1
+  fi
+}
+
 # Check Node.js
+NEED_NODE=false
 if ! command -v node &>/dev/null; then
-  log_error "Node.js is required but not installed."
-  echo ""
-  echo "  Install Node.js 20+ first: https://nodejs.org"
-  echo "  Then re-run this installer."
-  echo ""
-  exit 1
+  NEED_NODE=true
+else
+  NODE_MAJOR=$(node -e "console.log(process.versions.node.split('.')[0])")
+  if [ "$NODE_MAJOR" -lt 20 ]; then
+    NEED_NODE=true
+    log_warn "Node.js $NODE_MAJOR found but 20+ is required"
+  fi
 fi
 
-NODE_MAJOR=$(node -e "console.log(process.versions.node.split('.')[0])")
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  log_error "Node.js 20+ required (found v$(node -v))"
-  echo ""
-  echo "  Upgrade Node.js: https://nodejs.org"
-  echo "  Then re-run this installer."
-  echo ""
-  exit 1
+if [ "$NEED_NODE" = true ]; then
+  prompt_install "Node.js 20+" "Install from: https://nodejs.org"
+  log_info "Installing Node.js 22..."
+  case "$OS" in
+    Linux*)
+      apt-get update -qq
+      apt-get install -y -qq ca-certificates curl gnupg
+      mkdir -p /etc/apt/keyrings
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+      apt-get update -qq
+      apt-get install -y -qq nodejs
+      ;;
+    Darwin*)
+      if command -v brew &>/dev/null; then
+        brew install node 2>&1 | tail -1
+      else
+        log_error "Cannot auto-install Node.js without Homebrew. Install from https://nodejs.org"
+        exit 1
+      fi
+      ;;
+    *)
+      log_error "Cannot auto-install Node.js on this OS. Install from https://nodejs.org"
+      exit 1
+      ;;
+  esac
+  if ! command -v node &>/dev/null; then
+    log_error "Node.js installation failed. Install manually from https://nodejs.org"
+    exit 1
+  fi
+  log_ok "Node.js $(node -v) installed"
 fi
 
 # Check Claude Code
 if ! command -v claude &>/dev/null; then
-  log_error "Claude Code is required but not installed."
-  echo ""
-  echo "  Install it first:  npm install -g @anthropic-ai/claude-code"
-  echo "  Then re-run this installer."
-  echo ""
-  exit 1
+  prompt_install "Claude Code" "Install with: npm install -g @anthropic-ai/claude-code"
+  log_info "Installing Claude Code..."
+  npm install -g @anthropic-ai/claude-code 2>&1 | tail -1
+  if ! command -v claude &>/dev/null; then
+    log_error "Claude Code installation failed. Install manually: npm install -g @anthropic-ai/claude-code"
+    exit 1
+  fi
+  log_ok "Claude Code $(claude --version 2>/dev/null || echo 'installed')"
 fi
 
 # Install runtime deps if missing (tmux, dtach, curl, build tools)
