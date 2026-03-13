@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # OpenFlow Installer
-# Clones and sets up OpenFlow from GitHub.
+# One command to install and start OpenFlow.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/openflow/main/scripts/install.sh | bash
@@ -29,6 +29,19 @@ log_step()  { echo -e "\n${BOLD}[$1/$TOTAL_STEPS] $2${NC}"; }
 
 TOTAL_STEPS=7
 
+# Detect the target user (if running as root via sudo, install for the real user)
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  TARGET_USER="$SUDO_USER"
+  TARGET_HOME=$(eval echo "~$SUDO_USER")
+  INSTALL_DIR="${OPENFLOW_INSTALL_DIR:-$TARGET_HOME/openflow}"
+elif [ "$(id -u)" -eq 0 ]; then
+  TARGET_USER="root"
+  TARGET_HOME="$HOME"
+else
+  TARGET_USER="$(whoami)"
+  TARGET_HOME="$HOME"
+fi
+
 # --- Step 1: Install system prerequisites ------------------------------------
 
 log_step 1 "Installing system prerequisites..."
@@ -38,13 +51,11 @@ OS="$(uname -s)"
 install_linux_prereqs() {
   local NEEDED=()
 
-  # Check what's missing
   command -v git &>/dev/null   || NEEDED+=(git)
   command -v tmux &>/dev/null  || NEEDED+=(tmux)
   command -v dtach &>/dev/null || NEEDED+=(dtach)
   dpkg -s build-essential &>/dev/null 2>&1 || NEEDED+=(build-essential)
 
-  # Check Node.js (need 20+)
   local NEED_NODE=false
   if ! command -v node &>/dev/null; then
     NEED_NODE=true
@@ -59,20 +70,20 @@ install_linux_prereqs() {
 
   if [ "$NEED_NODE" = true ]; then
     log_info "Installing Node.js 22 via NodeSource..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq ca-certificates curl gnupg
-    sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list > /dev/null
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq nodejs
+    apt-get update -qq
+    apt-get install -y -qq ca-certificates curl gnupg
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+    apt-get update -qq
+    apt-get install -y -qq nodejs
     log_ok "Node.js $(node -v) installed"
   fi
 
   if [ ${#NEEDED[@]} -gt 0 ]; then
     log_info "Installing: ${NEEDED[*]}..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq "${NEEDED[@]}"
+    apt-get update -qq
+    apt-get install -y -qq "${NEEDED[@]}"
     log_ok "System packages installed"
   fi
 }
@@ -116,7 +127,7 @@ case "$OS" in
     ;;
 esac
 
-# Verify everything is present
+# Verify system packages
 for cmd in node npm git tmux dtach; do
   if ! command -v "$cmd" &>/dev/null; then
     log_error "Failed to install $cmd. Please install it manually and re-run."
@@ -132,21 +143,20 @@ fi
 
 log_ok "All prerequisites met (Node $(node -v), tmux $(tmux -V))"
 
-# --- Step 2: Check for Claude Code (user must install) ------------------------
+# --- Step 2: Check Claude Code (prerequisite) --------------------------------
 
 log_step 2 "Checking for Claude Code..."
 
 if ! command -v claude &>/dev/null; then
   log_error "Claude Code is required but not installed."
   echo ""
-  echo "Install Claude Code first:"
-  echo "  npm install -g @anthropic-ai/claude-code"
+  echo "  Install it first:  npm install -g @anthropic-ai/claude-code"
+  echo "  Then re-run this installer."
   echo ""
-  echo "Then re-run this installer."
   exit 1
 fi
 
-log_ok "Claude Code found: $(claude --version 2>/dev/null || echo 'installed')"
+log_ok "Claude Code $(claude --version 2>/dev/null || echo 'found')"
 
 # --- Step 3: Clone repository ------------------------------------------------
 
@@ -199,48 +209,59 @@ log_step 6 "Installing CLI..."
 
 chmod +x "$INSTALL_DIR/bin/openflow"
 
-# Try /usr/local/bin first, fall back to ~/.local/bin
 LINK_DIR="/usr/local/bin"
 if [ ! -w "$LINK_DIR" ]; then
-  LINK_DIR="$HOME/.local/bin"
+  LINK_DIR="$TARGET_HOME/.local/bin"
   mkdir -p "$LINK_DIR"
 fi
 
 ln -sf "$INSTALL_DIR/bin/openflow" "$LINK_DIR/openflow"
 log_ok "CLI installed: $LINK_DIR/openflow"
 
-# --- Step 7: Finalize --------------------------------------------------------
+# --- Step 7: Finalize & Start ------------------------------------------------
 
 log_step 7 "Finalizing..."
 
 mkdir -p "$INSTALL_DIR/logs"
 
-# Restart the server if it was already running
+# Fix ownership if running as root for another user
+if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+  log_info "Setting ownership to $TARGET_USER..."
+  chown -R "$TARGET_USER:$TARGET_USER" "$INSTALL_DIR"
+fi
+
+# Stop if already running
 if ("$LINK_DIR/openflow" status 2>/dev/null || true) | grep -q 'running'; then
-  log_info "Restarting running server to apply updates..."
   "$LINK_DIR/openflow" stop 2>/dev/null || true
   sleep 1
-  "$LINK_DIR/openflow" start 2>/dev/null || true
-  log_ok "Server restarted"
 fi
 
 # Remove legacy Tauri desktop app if installed
 if command -v dpkg &>/dev/null && dpkg -l open-flow &>/dev/null 2>&1; then
   log_info "Removing legacy desktop app (Tauri)..."
-  sudo dpkg -r open-flow 2>&1 || true
-  log_ok "Legacy desktop app removed"
+  dpkg -r open-flow 2>&1 || true
+fi
+
+# Start the server (as target user if we're root)
+log_info "Starting OpenFlow server..."
+if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+  su - "$TARGET_USER" -c "PATH=\"$LINK_DIR:\$PATH\" openflow start"
+else
+  "$LINK_DIR/openflow" start
 fi
 
 # --- Summary -----------------------------------------------------------------
 
 echo ""
-echo -e "${GREEN}${BOLD}OpenFlow installed successfully!${NC}"
+echo -e "${GREEN}${BOLD}OpenFlow installed and running!${NC}"
 echo ""
 echo "  Install dir:  $INSTALL_DIR"
 echo "  CLI:          $LINK_DIR/openflow"
+echo "  Dashboard:    http://localhost:42010"
 echo ""
-echo "Next steps:"
+echo "Commands:"
+echo "  openflow status            # Check status"
+echo "  openflow stop              # Stop the server"
 echo "  openflow start             # Start the server"
-echo "  openflow install-service   # Install as system service (auto-start on boot)"
-echo "  openflow status            # Check status and version info"
+echo "  openflow install-service   # Auto-start on boot"
 echo ""
