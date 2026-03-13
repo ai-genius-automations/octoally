@@ -5,11 +5,12 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/openflow/main/scripts/install.sh | bash
 #   OPENFLOW_INSTALL_DIR=/opt/openflow bash install.sh
+#   OPENFLOW_REPO_URL="https://TOKEN@github.com/org/repo.git" bash install.sh
 
 set -euo pipefail
 
 INSTALL_DIR="${OPENFLOW_INSTALL_DIR:-$HOME/openflow}"
-REPO_URL="https://github.com/ai-genius-automations/openflow.git"
+REPO_URL="${OPENFLOW_REPO_URL:-https://github.com/ai-genius-automations/openflow.git}"
 BRANCH="${OPENFLOW_BRANCH:-main}"
 
 # Colors
