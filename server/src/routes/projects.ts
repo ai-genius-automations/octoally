@@ -249,7 +249,7 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      const result = await execFileAsync(npx, ['ruflo@latest', 'init', '--force', '--start-all'], opts);
+      const result = await execFileAsync(npx, ['ruflo@latest', 'init', '--force'], opts);
       output.push('[ruflo init] ' + (result.stdout || 'done'));
       return { ok: true, output: output.join('\n') };
     } catch (err: any) {

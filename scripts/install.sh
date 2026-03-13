@@ -151,6 +151,15 @@ fi
 
 log_ok "All prerequisites met (Node $(node -v), tmux $(tmux -V))"
 
+# Install ruflo + claude-flow globally so per-project init doesn't re-download
+if ! command -v ruflo &>/dev/null; then
+  log_info "Installing RuFlo + Claude Flow CLI..."
+  sudo npm install -g ruflo @claude-flow/cli 2>&1 | tail -1
+  log_ok "RuFlo $(ruflo --version 2>/dev/null || echo 'installed')"
+else
+  log_ok "RuFlo already installed"
+fi
+
 # --- Step 3: Clone repository ------------------------------------------------
 
 log_step 3 "Setting up OpenFlow in $INSTALL_DIR..."
