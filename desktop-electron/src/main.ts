@@ -45,6 +45,19 @@ function createWindow() {
   const isDev = !!process.env.ELECTRON_ENABLE_LOGGING;
   mainWindow.loadURL(isDev ? 'http://localhost:42011' : 'http://localhost:42010');
 
+  // Recover from renderer crashes — reload the page instead of showing a blank window
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[OpenFlow] Renderer process gone: ${details.reason}`);
+    if (details.reason !== 'clean-exit') {
+      setTimeout(() => mainWindow?.webContents.reload(), 500);
+    }
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[OpenFlow] Window became unresponsive, reloading...');
+    setTimeout(() => mainWindow?.webContents.reload(), 1000);
+  });
+
   // Close-to-tray: hide window instead of quitting
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {

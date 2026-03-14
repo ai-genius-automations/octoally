@@ -12,6 +12,7 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
   const [inputUrl, setInputUrl] = useState(url);
   const [currentUrl, setCurrentUrl] = useState(url);
   const [loading, setLoading] = useState(true);
+  const [crashed, setCrashed] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const webviewRef = useRef<HTMLElement>(null);
   const inputFocusedRef = useRef(false);
@@ -75,11 +76,30 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
       updateNavState();
     }
 
+    // Crash/unresponsive recovery — webview renderer can die under memory pressure
+    function onCrash() {
+      console.warn('[WebPageView] Webview renderer crashed, will reload');
+      setCrashed(true);
+      setLoading(false);
+    }
+    function onUnresponsive() {
+      console.warn('[WebPageView] Webview became unresponsive');
+      setCrashed(true);
+      setLoading(false);
+    }
+    function onResponsive() {
+      setCrashed(false);
+    }
+
     wv.addEventListener('did-start-loading', onNavStart);
     wv.addEventListener('did-stop-loading', onNavDone);
     wv.addEventListener('did-fail-load', onNavFailed);
     wv.addEventListener('did-navigate', updateNavState);
     wv.addEventListener('did-navigate-in-page', updateNavState);
+    wv.addEventListener('render-process-gone', onCrash);
+    wv.addEventListener('crashed', onCrash);
+    wv.addEventListener('unresponsive', onUnresponsive);
+    wv.addEventListener('responsive', onResponsive);
 
     return () => {
       wv.removeEventListener('did-start-loading', onNavStart);
@@ -87,6 +107,10 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
       wv.removeEventListener('did-fail-load', onNavFailed);
       wv.removeEventListener('did-navigate', updateNavState);
       wv.removeEventListener('did-navigate-in-page', updateNavState);
+      wv.removeEventListener('render-process-gone', onCrash);
+      wv.removeEventListener('crashed', onCrash);
+      wv.removeEventListener('unresponsive', onUnresponsive);
+      wv.removeEventListener('responsive', onResponsive);
     };
   }, [onUrlChange, updateDisplayUrl]);
 
@@ -166,10 +190,21 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
     (e.target as HTMLFormElement).querySelector('input')?.blur();
   }
 
-  if (!visible) return null;
+  // Recover from crash: reload the webview
+  function recoverFromCrash() {
+    setCrashed(false);
+    setLoading(true);
+    if (isElectron && webviewRef.current) {
+      (webviewRef.current as any).reload?.();
+    } else if (iframeRef.current) {
+      iframeRef.current.src = currentUrl;
+    }
+  }
 
+  // Keep mounted but hidden — unmounting destroys the webview renderer process,
+  // causing blank pages and full reloads when switching back.
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" style={{ display: visible ? 'flex' : 'none' }}>
       {/* Browser toolbar */}
       <div
         className="flex items-center gap-1.5 px-2 py-1.5 shrink-0"
@@ -266,6 +301,22 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
 
       {/* Content area */}
       <div className="flex-1 min-h-0 relative">
+        {crashed && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
+            style={{ background: 'var(--bg-primary)' }}>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              This page became unresponsive or crashed.
+            </p>
+            <button
+              onClick={recoverFromCrash}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+              style={{ background: 'var(--accent)', color: 'white' }}
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              Reload Page
+            </button>
+          </div>
+        )}
         {isElectron ? (
           // Electron: use <webview> for full browser capabilities (OAuth, cookies, etc.)
           <webview

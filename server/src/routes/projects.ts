@@ -10,6 +10,44 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Migrate hook paths in .claude/settings.json to absolute paths.
+ *
+ * Both ruflo init and DevCortex installers write relative or $CLAUDE_PROJECT_DIR
+ * paths that break when CWD differs from the project root (e.g. npm scripts change
+ * CWD to a subdirectory). $CLAUDE_PROJECT_DIR is not a real Claude Code env var.
+ *
+ * This runs AFTER any tool writes settings.json and patches all paths to absolute.
+ * Idempotent — safe to call multiple times. Returns a log line or null.
+ */
+function migrateSettingsHookPaths(projectPath: string): string | null {
+  const settingsPath = join(projectPath, '.claude', 'settings.json');
+  if (!existsSync(settingsPath)) return null;
+  try {
+    let settings = readFileSync(settingsPath, 'utf-8');
+    const oldSettings = settings;
+    const pp = projectPath;
+    // Fix relative node .claude/ paths → absolute
+    settings = settings.replace(/("node )(\.claude\/)/g, `$1${pp}/.claude/`);
+    // Fix broken $CLAUDE_PROJECT_DIR references → absolute (unquoted form)
+    settings = settings.replace(/("node )\$CLAUDE_PROJECT_DIR\/(\.claude\/)/g, `$1${pp}/.claude/`);
+    // Fix broken $CLAUDE_PROJECT_DIR with escaped quotes (ruflo init --force output)
+    settings = settings.replace(/(node )(\\"\$CLAUDE_PROJECT_DIR\/)(\.claude\/)/g, `$1${pp}/.claude/`);
+    // Clean up trailing escaped quotes left over from the above replacement
+    settings = settings.replace(new RegExp(`(${pp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.claude/helpers/[^"]+)(\\\\")`, 'g'), '$1');
+    // Fix relative find/rm .swarm/ paths → absolute
+    settings = settings.replace(/(find |rm -f )(\.swarm\/)/g, `$1${pp}/.swarm/`);
+    settings = settings.replace(/(find |rm -f )\$CLAUDE_PROJECT_DIR\/(\.swarm\/)/g, `$1${pp}/.swarm/`);
+    if (settings !== oldSettings) {
+      writeFileSync(settingsPath, settings, 'utf-8');
+      return '[migrate] Patched hook paths to absolute: ' + pp;
+    }
+  } catch {
+    // Non-fatal — settings file may be malformed
+  }
+  return null;
+}
+
 /** Shared ruflo-run.sh — created by DevCortex installer, shared with OpenFlow.
  *  Falls back to npx if the script doesn't exist (no DevCortex installed). */
 const RUFLO_RUN = join(homedir(), '.openflow', 'ruflo-run.sh');
@@ -281,24 +319,9 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       output.push('[hive-mind init] ' + (err.message || 'skipped'));
     }
 
-    // Migrate old relative hook paths to $CLAUDE_PROJECT_DIR (ruflo 3.5.15+ fix)
-    const settingsPath = join(project.path, '.claude', 'settings.json');
-    if (existsSync(settingsPath)) {
-      try {
-        let settings = readFileSync(settingsPath, 'utf-8');
-        const oldSettings = settings;
-        // Fix relative node .claude/ paths → $CLAUDE_PROJECT_DIR/.claude/
-        settings = settings.replace(/("node )(\.claude\/)/g, '$1$CLAUDE_PROJECT_DIR/.claude/');
-        // Fix relative find/rm .swarm/ paths → $CLAUDE_PROJECT_DIR/.swarm/
-        settings = settings.replace(/(find |rm -f )(\.swarm\/)/g, '$1$CLAUDE_PROJECT_DIR/.swarm/');
-        if (settings !== oldSettings) {
-          writeFileSync(settingsPath, settings, 'utf-8');
-          output.push('[migrate] Patched relative hook paths → $CLAUDE_PROJECT_DIR');
-        }
-      } catch {
-        // Non-fatal — settings file may be malformed
-      }
-    }
+    // Patch relative/broken hook paths to absolute after ruflo writes settings
+    const migrated = migrateSettingsHookPaths(project.path);
+    if (migrated) output.push(migrated);
 
     // Clean up stale claude-flow.config.json (ruflo uses .claude-flow/config.yaml now)
     const staleConfig = join(project.path, 'claude-flow.config.json');
@@ -438,7 +461,10 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
         timeout: 60_000,
         env: { ...process.env, HOME: homedir() },
       });
-      return { ok: true, output: result.stdout || 'DevCortex installed' };
+      // Patch relative/broken hook paths after DevCortex writes settings
+      const migrated = migrateSettingsHookPaths(project.path);
+      const output = result.stdout || 'DevCortex installed';
+      return { ok: true, output: migrated ? output + '\n' + migrated : output };
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message || 'Install failed', output: err.stderr || '' });
     }
