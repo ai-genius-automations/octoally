@@ -138,6 +138,15 @@ app.whenReady().then(async () => {
   // Webview setup: intercept OAuth navigations, open in popup BrowserWindow
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() === 'webview') {
+      // Set dark background to prevent white flash during SPA page transitions.
+      // This is the color Chromium shows between page paints.
+      contents.setBackgroundThrottling(false);
+      contents.on('dom-ready', () => {
+        try {
+          contents.setBackgroundColor('#0f1117');
+        } catch {}
+      });
+
       // Handle window.open() — navigate the webview instead of opening a popup
       contents.setWindowOpenHandler(({ url }) => {
         contents.loadURL(url);

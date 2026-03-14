@@ -71,7 +71,10 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
       } catch {}
       updateNavState();
     }
-    function onNavFailed() {
+    function onNavFailed(event: any) {
+      // errorCode -3 = ABORTED — happens during rapid navigation, not a real failure
+      const code = event?.errorCode ?? event?.detail?.errorCode;
+      if (code === -3) return; // ignore aborted loads from rapid clicking
       setLoading(false);
       updateNavState();
     }
@@ -91,8 +94,28 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
       setCrashed(false);
     }
 
-    wv.addEventListener('did-start-loading', onNavStart);
-    wv.addEventListener('did-stop-loading', onNavDone);
+    // Watchdog: if loading takes longer than 8s (likely stuck from rapid clicks),
+    // auto-reload the webview to recover from blank page
+    let loadTimer: ReturnType<typeof setTimeout> | null = null;
+    function onNavStartWithWatchdog() {
+      onNavStart();
+      if (loadTimer) clearTimeout(loadTimer);
+      loadTimer = setTimeout(() => {
+        try {
+          if (wv.isLoading?.()) {
+            console.warn('[WebPageView] Loading stuck, reloading...');
+            wv.reload?.();
+          }
+        } catch {}
+      }, 8000);
+    }
+    function onNavDoneWithWatchdog() {
+      if (loadTimer) { clearTimeout(loadTimer); loadTimer = null; }
+      onNavDone();
+    }
+
+    wv.addEventListener('did-start-loading', onNavStartWithWatchdog);
+    wv.addEventListener('did-stop-loading', onNavDoneWithWatchdog);
     wv.addEventListener('did-fail-load', onNavFailed);
     wv.addEventListener('did-navigate', updateNavState);
     wv.addEventListener('did-navigate-in-page', updateNavState);
@@ -102,8 +125,9 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
     wv.addEventListener('responsive', onResponsive);
 
     return () => {
-      wv.removeEventListener('did-start-loading', onNavStart);
-      wv.removeEventListener('did-stop-loading', onNavDone);
+      if (loadTimer) clearTimeout(loadTimer);
+      wv.removeEventListener('did-start-loading', onNavStartWithWatchdog);
+      wv.removeEventListener('did-stop-loading', onNavDoneWithWatchdog);
       wv.removeEventListener('did-fail-load', onNavFailed);
       wv.removeEventListener('did-navigate', updateNavState);
       wv.removeEventListener('did-navigate-in-page', updateNavState);
@@ -319,12 +343,13 @@ export function WebPageView({ url, visible = true, onUrlChange }: WebPageViewPro
         )}
         {isElectron ? (
           // Electron: use <webview> for full browser capabilities (OAuth, cookies, etc.)
+          // Dark background prevents white flash during SPA page transitions
           <webview
             ref={webviewRef as any}
             src={currentUrl}
             // @ts-ignore — Electron webview attributes not in React types
             partition="persist:webpages"
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: '100%', background: '#0f1117' }}
           />
         ) : (
           // Browser fallback: iframe (limited — OAuth/X-Frame-Options may block some sites)
