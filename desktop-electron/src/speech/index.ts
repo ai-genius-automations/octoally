@@ -410,7 +410,7 @@ export function registerSpeechHandlers() {
   }));
 
   ipcMain.handle('stt_set_silence_timeout', (_e, args: { silenceTimeoutMs: number }) => {
-    const ms = Math.max(200, Math.min(3000, args.silenceTimeoutMs));
+    const ms = Math.max(200, Math.min(5000, args.silenceTimeoutMs));
     state.silenceTimeoutMs = ms;
     saveConfig({ silenceTimeoutMs: ms });
     console.error(`[STT] Silence timeout set to: ${ms}ms`);

@@ -44,7 +44,6 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
   const whisperInstallStage = useSpeechStore((s) => s.whisperInstallStage);
   const whisperInstallPercent = useSpeechStore((s) => s.whisperInstallPercent);
   const whisperInstallMessage = useSpeechStore((s) => s.whisperInstallMessage);
-  const silenceTimeoutMs = useSpeechStore((s) => s.silenceTimeoutMs);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
 
   // Snapshot of the "committed" backend state when modal opened
@@ -52,12 +51,14 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
   const committedOpenaiKey = useRef(useSpeechStore.getState().openaiApiKey);
   const committedGroqKey = useRef(useSpeechStore.getState().groqApiKey);
   const committedWakePhrase = useRef(useSpeechStore.getState().wakePhrase);
+  const committedSilenceTimeout = useRef(useSpeechStore.getState().silenceTimeoutMs);
 
   // Draft state — what the user is configuring (not yet saved)
   const [draftBackend, setDraftBackend] = useState<'local' | 'openai' | 'groq'>(committedBackend.current);
   const [draftOpenaiKey, setDraftOpenaiKey] = useState(committedOpenaiKey.current);
   const [draftGroqKey, setDraftGroqKey] = useState(committedGroqKey.current);
   const [draftWakePhrase, setDraftWakePhrase] = useState(committedWakePhrase.current);
+  const [draftSilenceTimeout, setDraftSilenceTimeout] = useState(committedSilenceTimeout.current);
   const [showApiKey, setShowApiKey] = useState(false);
   const [activeTab, setActiveTab] = useState<'speech' | 'commands'>('speech');
 
@@ -65,7 +66,8 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
   const hasChanges = draftBackend !== committedBackend.current
     || (draftBackend === 'openai' && draftOpenaiKey !== committedOpenaiKey.current)
     || (draftBackend === 'groq' && draftGroqKey !== committedGroqKey.current)
-    || draftWakePhrase !== committedWakePhrase.current;
+    || draftWakePhrase !== committedWakePhrase.current
+    || draftSilenceTimeout !== committedSilenceTimeout.current;
 
   const loadModels = async () => {
     setLoading(true);
@@ -152,11 +154,17 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
         await setWakePhrase(draftWakePhrase.trim());
       }
 
+      // Save silence timeout if changed
+      if (draftSilenceTimeout !== committedSilenceTimeout.current) {
+        await setSilenceTimeout(draftSilenceTimeout);
+      }
+
       // Update committed refs
       committedBackend.current = draftBackend;
       committedOpenaiKey.current = draftOpenaiKey;
       committedGroqKey.current = draftGroqKey;
       committedWakePhrase.current = draftWakePhrase;
+      committedSilenceTimeout.current = draftSilenceTimeout;
 
       onClose();
     } catch (e) {
@@ -171,6 +179,7 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
     setDraftOpenaiKey(committedOpenaiKey.current);
     setDraftGroqKey(committedGroqKey.current);
     setDraftWakePhrase(committedWakePhrase.current);
+    setDraftSilenceTimeout(committedSilenceTimeout.current);
     onClose();
   };
 
@@ -373,28 +382,25 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                 style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
               >
-                {silenceTimeoutMs}ms
+                {draftSilenceTimeout}ms
               </span>
             </div>
             <input
               type="range"
               min={200}
-              max={3000}
+              max={5000}
               step={100}
-              value={silenceTimeoutMs}
-              onChange={(e) => {
-                const ms = parseInt(e.target.value);
-                setSilenceTimeout(ms);
-              }}
+              value={draftSilenceTimeout}
+              onChange={(e) => setDraftSilenceTimeout(parseInt(e.target.value))}
               className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
               style={{
-                background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${((silenceTimeoutMs - 200) / 2800) * 100}%, var(--bg-tertiary) ${((silenceTimeoutMs - 200) / 2800) * 100}%, var(--bg-tertiary) 100%)`,
+                background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${((draftSilenceTimeout - 200) / 4800) * 100}%, var(--bg-tertiary) ${((draftSilenceTimeout - 200) / 4800) * 100}%, var(--bg-tertiary) 100%)`,
                 accentColor: 'var(--accent)',
               }}
             />
             <div className="flex justify-between text-[9px]" style={{ color: 'var(--text-secondary)' }}>
               <span>200ms (fast)</span>
-              <span>3000ms (slow)</span>
+              <span>5000ms (slow)</span>
             </div>
             <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               How long to wait after you stop speaking before sending the audio for transcription. Shorter = more responsive but may cut you off mid-sentence. Longer = waits for natural pauses.

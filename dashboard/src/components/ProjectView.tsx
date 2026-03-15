@@ -426,6 +426,22 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     setShowLauncher(false);
   }
 
+  // Compute hidden sessions (user hid the tab but process is still running)
+  const hiddenSessions = useMemo(() => {
+    if (closedSessionIds.current.size === 0) return [];
+    return projectSessions.filter((s) =>
+      closedSessionIds.current.has(s.id) &&
+      (s.status === 'running' || s.status === 'detached')
+    );
+  }, [projectSessions]);
+
+  function unhideSession(id: string) {
+    closedSessionIds.current.delete(id);
+    // Trigger re-sync by invalidating sessions query
+    queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    setShowAdoptMenu(false);
+  }
+
   const [showAdoptMenu, setShowAdoptMenu] = useState(false);
   const adoptMenuRef = useRef<HTMLDivElement>(null);
   const adoptDropdownRef = useRef<HTMLDivElement>(null);
@@ -768,14 +784,22 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                       }
                     }}
                     className="flex items-center gap-1 px-2 rounded-md shrink-0 transition-colors text-xs"
-                    title="Scan for external hivemind sessions to adopt"
+                    title={hiddenSessions.length > 0 ? `${hiddenSessions.length} hidden session(s) — click to restore` : 'Scan for external hivemind sessions to adopt'}
                     style={{
                       height: 28,
-                      color: showAdoptMenu ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)',
+                      color: hiddenSessions.length > 0 ? '#f59e0b' : showAdoptMenu ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)',
                       background: showAdoptMenu ? 'var(--bg-tertiary)' : 'transparent',
                     }}
                   >
                     <Download className="w-3.5 h-3.5" />
+                    {hiddenSessions.length > 0 && (
+                      <span
+                        className="text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                        style={{ background: '#f59e0b', color: '#000' }}
+                      >
+                        {hiddenSessions.length}
+                      </span>
+                    )}
                   </button>
 
                   {showAdoptMenu && createPortal(
@@ -789,6 +813,39 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                         left: adoptMenuRef.current?.getBoundingClientRect().left ?? 0,
                       }}
                     >
+                      {/* Hidden sessions (tabs the user hid but processes still running) */}
+                      {hiddenSessions.length > 0 && (
+                        <>
+                          <div
+                            className="px-3 py-1.5 text-xs font-medium"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            Hidden Sessions
+                          </div>
+                          {hiddenSessions.map((s) => {
+                            const isTerminal = s.task === 'Terminal';
+                            const isAgent = s.task.startsWith('Agent (');
+                            const icon = isTerminal ? '💻' : isAgent ? '🤖' : '🐝';
+                            const typeLabel = isTerminal ? 'Terminal' : isAgent ? 'Agent' : 'Hivemind';
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => unhideSession(s.id)}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                <div className="truncate font-medium">{icon} {typeLabel} — {s.task.slice(0, 60)}</div>
+                                <div className="truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                                  {s.status} · {s.created_at ? new Date(s.created_at).toLocaleTimeString() : 'unknown'}
+                                </div>
+                              </button>
+                            );
+                          })}
+                          <div className="mx-3 my-1" style={{ height: 1, background: 'var(--border)' }} />
+                        </>
+                      )}
+
+                      {/* External hivemind sessions (tmux sessions not tracked by OpenFlow) */}
                       <div
                         className="px-3 py-1.5 text-xs font-medium"
                         style={{ color: 'var(--text-secondary)' }}
