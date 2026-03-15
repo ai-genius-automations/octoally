@@ -464,7 +464,10 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
         const isAgent = session.task?.startsWith('Agent (');
         const prefix = isTerminal ? 'Terminal' : isAgent ? 'Agent' : 'Hivemind';
         const count = prev.filter((t) => t.label.startsWith(prefix)).length + 1;
-        return [...prev, { id, label: `${prefix} ${count}` }];
+        const result = [...prev, { id, label: `${prefix} ${count}` }];
+        const order = (l: string) => l.startsWith('Hivemind') ? 0 : l.startsWith('Agent') ? 1 : 2;
+        result.sort((a, b) => order(a.label) - order(b.label));
+        return result;
       });
       setActiveTerminalId(id);
       setShowLauncher(false);
@@ -493,6 +496,8 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
         const count = updated.filter((t) => t.label.startsWith(prefix)).length + 1;
         updated.push({ id, label: `${prefix} ${count}` });
       }
+      const order = (l: string) => l.startsWith('Hivemind') ? 0 : l.startsWith('Agent') ? 1 : 2;
+      updated.sort((a, b) => order(a.label) - order(b.label));
       return updated;
     });
 
