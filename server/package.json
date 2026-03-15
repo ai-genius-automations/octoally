@@ -1,6 +1,6 @@
 {
   "name": "@openflow/server",
-  "version": "0.1.8-alpha",
+  "version": "0.1.9-alpha",
   "description": "OpenFlow backend server — Fastify + SQLite + WebSocket",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
