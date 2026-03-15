@@ -1,7 +1,7 @@
 {
   "name": "@openflow/dashboard",
   "private": true,
-  "version": "0.1.9-alpha",
+  "version": "0.1.10-alpha",
   "description": "OpenFlow dashboard — React + Vite frontend",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
