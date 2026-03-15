@@ -204,6 +204,7 @@ interface SpeechState {
   speaking: boolean;
   lastActivity: number; // Date.now()
   selectedDevice: string | undefined;
+  vad: VadProcessor | null; // current VAD instance (for muting after beeps)
   // Wake word
   wakePhrase: string;
   wakeWordPhase: WakeWordPhase;
@@ -221,6 +222,7 @@ const state: SpeechState = {
   silenceTimeoutMs: cfg.silenceTimeoutMs || 800,
   whisperBin: null,
   audioCapture: null,
+  vad: null,
   speaking: false,
   lastActivity: Date.now(),
   selectedDevice: undefined,
@@ -509,6 +511,7 @@ export function registerSpeechHandlers() {
 
       if (!state.audioCapture) {
         const vad = new VadProcessor(16000, state.silenceTimeoutMs);
+        state.vad = vad;
         const whisperBin = state.whisperBin;
         const tinyModel = tinyPath;
 
@@ -531,6 +534,7 @@ export function registerSpeechHandlers() {
 
       if (!state.audioCapture) {
         const vad = new VadProcessor(16000, state.silenceTimeoutMs);
+        state.vad = vad;
 
         state.audioCapture = new AudioCapture((samples) => {
           const events = vad.process(samples);
@@ -548,6 +552,7 @@ export function registerSpeechHandlers() {
 
       if (!state.audioCapture) {
         const vad = new VadProcessor(16000, state.silenceTimeoutMs);
+        state.vad = vad;
         const whisperBin = state.whisperBin;
         const mPath = p;
 
@@ -615,11 +620,19 @@ export function registerSpeechHandlers() {
 // Internal
 // ---------------------------------------------------------------------------
 
+/** Briefly mute VAD to prevent audio cue beep from being detected as speech. */
+function muteVad() {
+  if (state.vad) {
+    state.vad.mute(500); // 500ms covers beep duration + speaker→mic latency
+  }
+}
+
 function stopCapture() {
   if (state.audioCapture) {
     state.audioCapture.stop();
     state.audioCapture = null;
   }
+  state.vad = null;
   if (state.activeTimeout) {
     clearTimeout(state.activeTimeout);
     state.activeTimeout = null;
@@ -728,7 +741,8 @@ function handleVadEvent(event: VadEvent, whisperBin: string, modelPath: string) 
       emit('stt://transcribing');
       transcribe(whisperBin, modelPath, event.samples)
         .then(async (text) => {
-          if (!text) return;
+          if (!text) { muteVad(); return; }
+          muteVad(); // mute before emit so beep doesn't trigger VAD
           // In global mode, route through command matching (always-on command mode)
           if (state.mode === 'global' || state.mode === 'push-to-talk') {
             const matched = await matchCommandSmart(text);
@@ -775,7 +789,8 @@ function handleVadEventCloud(event: VadEvent, provider: CloudProvider, apiKey: s
       emit('stt://transcribing');
       transcribeCloud(provider, apiKey, event.samples)
         .then(async (text) => {
-          if (!text) return;
+          if (!text) { muteVad(); return; }
+          muteVad(); // mute before emit so beep doesn't trigger VAD
           // In global mode, route through command matching (always-on command mode)
           if (state.mode === 'global' || state.mode === 'push-to-talk') {
             const matched = await matchCommandSmart(text);
@@ -861,9 +876,11 @@ function handleVadEventWakeWord(
         transcribePromise
           .then(async (text) => {
             if (!text) {
+              muteVad();
               resetActiveTimeout();
               return;
             }
+            muteVad(); // mute before emit so beep doesn't trigger VAD
 
             // Match command: smart (GPT-5 mini) or regex fallback
             const matched = await matchCommandSmart(text);

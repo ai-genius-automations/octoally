@@ -25,6 +25,7 @@ export class VadProcessor {
   private silenceFrames = 0;
   private buffer: number[] = [];
   private pending: number[] = [];
+  private muteUntil = 0; // timestamp — ignore audio until this time (prevents beep pickup)
 
   constructor(sampleRate: number, silenceTimeoutMs?: number) {
     this.frameSize = Math.floor((sampleRate * FRAME_MS) / 1000);
@@ -34,6 +35,12 @@ export class VadProcessor {
   /** Update the silence timeout dynamically (in milliseconds). */
   setSilenceTimeout(ms: number) {
     this.silenceTimeoutMs = ms;
+  }
+
+  /** Suppress VAD for the given duration (ms). Used to ignore audio cue beeps. */
+  mute(durationMs: number) {
+    this.muteUntil = Date.now() + durationMs;
+    this.resetState();
   }
 
   process(samples: Float32Array | number[]): VadEvent[] {
@@ -53,6 +60,9 @@ export class VadProcessor {
   }
 
   private processFrame(frame: number[], events: VadEvent[]) {
+    // Skip processing while muted (audio cue playing — prevents beep pickup)
+    if (Date.now() < this.muteUntil) return;
+
     const energy = rmsEnergy(frame);
 
     // Calibration phase
