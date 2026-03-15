@@ -202,11 +202,20 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     }
     syncedRef.current = true;
 
-    // Prune closed IDs that are no longer in the server list (kill completed)
-    const aliveServerIds = new Set(projectSessions.map((s) => s.id));
+    // Prune closed IDs that are no longer alive on the server (kill completed)
+    const allAliveIds = new Set(
+      (sessionsData?.sessions || [])
+        .filter((s: any) => s.status === 'running' || s.status === 'detached')
+        .map((s: any) => s.id)
+    );
+    let pruned = false;
     for (const id of closedSessionIds.current) {
-      if (!aliveServerIds.has(id)) closedSessionIds.current.delete(id);
+      if (!allAliveIds.has(id)) {
+        closedSessionIds.current.delete(id);
+        pruned = true;
+      }
     }
+    if (pruned) setClosedIdsVersion((v) => v + 1);
 
     // Build a lookup of session type by ID
     const sessionById = new Map(projectSessions.map((s) => [s.id, s]));
@@ -825,16 +834,16 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                       {hiddenSessions.length > 0 && (
                         <>
                           <div
-                            className="px-3 py-1.5 text-xs font-medium"
+                            className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
                             style={{ color: 'var(--text-secondary)' }}
                           >
-                            Hidden Sessions
+                            Hidden
                           </div>
-                          {hiddenSessions.map((s) => {
+                          {hiddenSessions.map((s: any) => {
                             const isTerminal = s.task === 'Terminal';
-                            const isAgent = s.task.startsWith('Agent (');
-                            const icon = isTerminal ? '💻' : isAgent ? '🤖' : '🐝';
+                            const isAgent = s.task?.startsWith('Agent (');
                             const typeLabel = isTerminal ? 'Terminal' : isAgent ? 'Agent' : 'Hivemind';
+                            const typeColor = isTerminal ? '#f59e0b' : isAgent ? '#ef4444' : '#60a5fa';
                             return (
                               <button
                                 key={s.id}
@@ -842,23 +851,35 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                                 className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors"
                                 style={{ color: 'var(--text-primary)' }}
                               >
-                                <div className="truncate font-medium">{icon} {typeLabel} — {s.task.slice(0, 60)}</div>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                                    style={{ background: `${typeColor}20`, color: typeColor }}
+                                  >
+                                    {typeLabel}
+                                  </span>
+                                  <span className="truncate">{s.task === 'Terminal' ? 'Interactive shell' : s.task?.slice(0, 50)}</span>
+                                </div>
                                 <div className="truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                                   {s.status} · {s.created_at ? new Date(s.created_at).toLocaleTimeString() : 'unknown'}
                                 </div>
                               </button>
                             );
                           })}
-                          <div className="mx-3 my-1" style={{ height: 1, background: 'var(--border)' }} />
                         </>
                       )}
 
-                      {/* External hivemind sessions (tmux sessions not tracked by OpenFlow) */}
+                      {/* Divider between sections */}
+                      {hiddenSessions.length > 0 && discoverableSessions.length > 0 && (
+                        <div className="mx-3 my-1" style={{ height: 1, background: 'var(--border)' }} />
+                      )}
+
+                      {/* External sessions (tmux sessions not tracked by OpenFlow) */}
                       <div
-                        className="px-3 py-1.5 text-xs font-medium"
+                        className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--text-secondary)' }}
                       >
-                        External Hivemind Sessions
+                        External
                       </div>
                       {discoverableSessions.length === 0 ? (
                         <div
@@ -868,19 +889,32 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                           No external sessions found
                         </div>
                       ) : (
-                        discoverableSessions.map((s) => (
-                          <button
-                            key={s.socketPath}
-                            onClick={() => handleAdoptSession(s.socketPath)}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors"
-                            style={{ color: 'var(--text-primary)' }}
-                          >
-                            <div className="truncate font-medium">{s.task.slice(0, 80)}</div>
-                            <div className="truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                              {s.startedAt ? new Date(s.startedAt).toLocaleTimeString() : 'unknown time'}
-                            </div>
-                          </button>
-                        ))
+                        discoverableSessions.map((s) => {
+                          const isTerminal = !s.task || s.task === 'Terminal';
+                          const typeLabel = isTerminal ? 'Terminal' : 'Hivemind';
+                          const typeColor = isTerminal ? '#f59e0b' : '#60a5fa';
+                          return (
+                            <button
+                              key={s.socketPath}
+                              onClick={() => handleAdoptSession(s.socketPath)}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                                  style={{ background: `${typeColor}20`, color: typeColor }}
+                                >
+                                  {typeLabel}
+                                </span>
+                                <span className="truncate">{s.task?.slice(0, 60) || 'Session'}</span>
+                              </div>
+                              <div className="truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                                {s.startedAt ? new Date(s.startedAt).toLocaleTimeString() : 'unknown time'}
+                              </div>
+                            </button>
+                          );
+                        })
                       )}
                     </div>,
                     document.body
