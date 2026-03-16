@@ -221,12 +221,17 @@ BRIDGE_EOF
     );
 
     // Patch post-task to store pattern
+    // SubagentStop sends: { agentName, taskDescription, ... } via stdin
+    // PostToolUse sends: { tool_name, ... }
+    // We try multiple fields to find the task description
     content = content.replace(
       /\/\/ Implicit success feedback for intelligence/,
       \"// Record task completion as SONA trajectory\\n\" +
-      \"    if (sonaBridge && sonaBridge.isAvailable && sonaBridge.isAvailable() && prompt) {\\n\" +
+      \"    const sonaPrompt = hookInput.taskDescription || hookInput.description || hookInput.task\\n\" +
+      \"      || hookInput.agentName || prompt || '';\\n\" +
+      \"    if (sonaBridge && sonaBridge.isAvailable && sonaBridge.isAvailable() && sonaPrompt) {\\n\" +
       \"      try {\\n\" +
-      \"        sonaBridge.storePattern(prompt.substring(0, 500), 'task');\\n\" +
+      \"        sonaBridge.storePattern(sonaPrompt.substring(0, 500), 'task');\\n\" +
       \"      } catch (e) { /* non-fatal */ }\\n\" +
       \"    }\\n\" +
       \"    // Implicit success feedback for intelligence\"
