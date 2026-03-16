@@ -1,6 +1,6 @@
 {
   "version": "1",
   "channel": "stable",
-  "name": "openflow",
-  "description": "OpenFlow orchestration dashboard"
+  "name": "hivecommand",
+  "description": "HiveCommand orchestration dashboard"
 }

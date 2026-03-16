@@ -1,8 +1,8 @@
 [package]
-name = "openflow-desktop"
+name = "hivecommand-desktop"
 version = "0.1.0"
 edition = "2021"
-description = "OpenFlow desktop app with system tray"
+description = "HiveCommand desktop app with system tray"
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }

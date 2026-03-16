@@ -1,5 +1,5 @@
 {
-  "name": "openflow",
+  "name": "hivecommand",
   "version": "0.1.12-alpha",
   "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code sessions from a web UI",
   "type": "module",
@@ -19,10 +19,10 @@
   },
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
-  "homepage": "https://github.com/ai-genius-automations/openflow",
+  "homepage": "https://github.com/ai-genius-automations/hivecommand",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ai-genius-automations/openflow.git"
+    "url": "https://github.com/ai-genius-automations/hivecommand.git"
   },
   "dependencies": {
     "@xterm/addon-web-links": "^0.12.0"

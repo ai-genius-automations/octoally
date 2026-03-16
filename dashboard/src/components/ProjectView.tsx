@@ -56,7 +56,7 @@ interface PersistedState {
 let nextExplorerSeq = 1;
 
 function storageKey(projectId: string) {
-  return `openflow-project-${projectId}`;
+  return `hivecommand-project-${projectId}`;
 }
 
 function loadPersistedState(projectId: string): PersistedState | null {
@@ -85,7 +85,7 @@ export function cleanupProjectStorage(projectId: string) {
       const parsed = JSON.parse(raw);
       if (parsed?.explorerInstances) {
         for (const inst of parsed.explorerInstances) {
-          localStorage.removeItem(`openflow-explorer-${inst.id}`);
+          localStorage.removeItem(`hivecommand-explorer-${inst.id}`);
         }
       }
     }
@@ -297,7 +297,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     // Voice command: refresh active terminal display
     if (focusSessionId === '__voice_refresh_tab') {
       if (activeTerminalId) {
-        window.dispatchEvent(new CustomEvent('openflow:refresh-terminal', {
+        window.dispatchEvent(new CustomEvent('hivecommand:refresh-terminal', {
           detail: { sessionId: activeTerminalId },
         }));
       }
@@ -933,7 +933,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                         <div className="mx-3 my-1" style={{ height: 1, background: 'var(--border)' }} />
                       )}
 
-                      {/* External sessions (tmux sessions not tracked by OpenFlow) */}
+                      {/* External sessions (tmux sessions not tracked by HiveCommand) */}
                       <div
                         className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--text-secondary)' }}

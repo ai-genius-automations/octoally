@@ -222,13 +222,13 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
 
     // Make URLs in terminal output clickable — open in system browser via server
     term.loadAddon(new WebLinksAddon((_event, url) => {
-      console.log('[openflow] Link clicked in terminal:', url);
+      console.log('[hivecommand] Link clicked in terminal:', url);
       fetch('/api/open-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
-      }).then(r => console.log('[openflow] open-url response:', r.status))
-        .catch(e => console.error('[openflow] open-url failed:', e));
+      }).then(r => console.log('[hivecommand] open-url response:', r.status))
+        .catch(e => console.error('[hivecommand] open-url failed:', e));
     }));
 
     // Fit after a small delay to ensure container is sized
@@ -651,8 +651,8 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         w.send(JSON.stringify({ type: 'input', data }));
       }
     };
-    window.addEventListener('openflow:terminal-input', handler);
-    return () => window.removeEventListener('openflow:terminal-input', handler);
+    window.addEventListener('hivecommand:terminal-input', handler);
+    return () => window.removeEventListener('hivecommand:terminal-input', handler);
   }, [visible, suspended]);
 
   // Voice command: refresh terminal display
@@ -676,8 +676,8 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         setTimeout(() => connectFnRef.current?.(), 50);
       }
     };
-    window.addEventListener('openflow:refresh-terminal', handler);
-    return () => window.removeEventListener('openflow:refresh-terminal', handler);
+    window.addEventListener('hivecommand:refresh-terminal', handler);
+    return () => window.removeEventListener('hivecommand:refresh-terminal', handler);
   }, [sessionId]);
 
   return (

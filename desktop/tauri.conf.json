@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "OpenFlow",
+  "productName": "HiveCommand",
   "version": "0.1.0",
-  "identifier": "com.aigenius.openflow",
+  "identifier": "com.aigenius.hivecommand",
   "build": {
     "frontendDist": "../dashboard/dist",
     "devUrl": "http://localhost:42010"
@@ -13,7 +13,7 @@
     "trayIcon": {
       "iconPath": "icons/tray-icon.png",
       "iconAsTemplate": true,
-      "tooltip": "OpenFlow"
+      "tooltip": "HiveCommand"
     }
   },
   "bundle": {

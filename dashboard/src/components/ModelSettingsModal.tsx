@@ -676,7 +676,7 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
                 type="text"
                 value={draftWakePhrase}
                 onChange={(e) => setDraftWakePhrase(e.target.value)}
-                placeholder="hey openflow"
+                placeholder="hey hivecommand"
                 className="w-full px-2.5 py-1.5 rounded-md text-[11px] outline-none"
                 style={{
                   background: 'var(--bg-tertiary)',

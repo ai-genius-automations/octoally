@@ -27,7 +27,7 @@ import type { AppRouter } from './trpc/router.js';
 import { killAllSessions, cleanupStaleRunningSessions, autoReconnectDetachedSessions, getReconnectStatus } from './services/session-manager.js';
 import { config } from './config.js';
 import { appendFileSync, writeFileSync } from 'fs';
-const tlog = (s: string) => { try { appendFileSync('/tmp/openflow-timing.log', `[${new Date().toISOString()}] ${s}\n`); } catch {} };
+const tlog = (s: string) => { try { appendFileSync('/tmp/hivecommand-timing.log', `[${new Date().toISOString()}] ${s}\n`); } catch {} };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +54,7 @@ async function start() {
   });
 
   // Clear timing log for fresh run
-  try { writeFileSync('/tmp/openflow-timing.log', ''); } catch {}
+  try { writeFileSync('/tmp/hivecommand-timing.log', ''); } catch {}
 
   // Initialize database, load projects from user config, and clean up orphaned sessions
   let t = Date.now();
@@ -162,7 +162,7 @@ async function start() {
   // - stable: prefer newest non-prerelease; fall back to newest prerelease if no stable exists
   // - beta: newest prerelease
   // - alpha: newest release of any kind
-  const GITHUB_RELEASES_URL = 'https://api.github.com/repos/ai-genius-automations/openflow/releases?per_page=20';
+  const GITHUB_RELEASES_URL = 'https://api.github.com/repos/ai-genius-automations/hivecommand/releases?per_page=20';
   const _versionCache = new Map<string, { version: string; name: string; url: string; prerelease: boolean; checkedAt: number }>();
 
   interface GitHubRelease {
@@ -183,7 +183,7 @@ async function start() {
       }
 
       const resp = await fetch(GITHUB_RELEASES_URL, {
-        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'OpenFlow' },
+        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'HiveCommand' },
         signal: AbortSignal.timeout(5000),
       });
 
@@ -233,7 +233,7 @@ async function start() {
   app.get('/api/health', async () => {
     const reconnect = getReconnectStatus();
     return {
-      name: 'openflow',
+      name: 'hivecommand',
       version: serverVersion,
       status: 'running',
       uptime: process.uptime(),
@@ -262,7 +262,7 @@ async function start() {
   await app.listen({ port: config.port, host: config.host });
   tlog(`[STARTUP] listen: ${Date.now() - t}ms`);
   tlog(`[STARTUP] server ready, accepting connections`);
-  console.log(`\n🌊 OpenFlow running at http://localhost:${config.port}`);
+  console.log(`\n🌊 HiveCommand running at http://localhost:${config.port}`);
   console.log(`   API: http://localhost:${config.port}/api`);
   if (config.isDev) {
     console.log(`   Dashboard: http://localhost:42011 (Vite dev server)`);
@@ -270,13 +270,13 @@ async function start() {
 }
 
 start().catch((err) => {
-  console.error('Failed to start OpenFlow:', err);
+  console.error('Failed to start HiveCommand:', err);
   process.exit(1);
 });
 
 // Graceful shutdown — kill all PTY sessions
 function shutdown() {
-  console.log('\n🌊 Shutting down OpenFlow...');
+  console.log('\n🌊 Shutting down HiveCommand...');
   killAllSessions();
   process.exit(0);
 }

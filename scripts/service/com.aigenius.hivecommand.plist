@@ -3,16 +3,16 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.aigenius.openflow</string>
+  <string>com.aigenius.hivecommand</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/node</string>
-    <string>__OPENFLOW_DIR__/server/dist/index.js</string>
+    <string>__HIVECOMMAND_DIR__/server/dist/index.js</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>__OPENFLOW_DIR__/server</string>
+  <string>__HIVECOMMAND_DIR__/server</string>
 
   <key>EnvironmentVariables</key>
   <dict>
@@ -32,9 +32,9 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>__OPENFLOW_DIR__/logs/openflow.log</string>
+  <string>__HIVECOMMAND_DIR__/logs/hivecommand.log</string>
   <key>StandardErrorPath</key>
-  <string>__OPENFLOW_DIR__/logs/openflow-error.log</string>
+  <string>__HIVECOMMAND_DIR__/logs/hivecommand-error.log</string>
 
   <key>UserName</key>
   <string>__USER__</string>

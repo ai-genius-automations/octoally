@@ -131,10 +131,10 @@ impl SpeechState {
     }
 }
 
-/// Returns the models directory: ~/.openflow/models/
+/// Returns the models directory: ~/.hivecommand/models/
 pub fn models_dir() -> PathBuf {
     let home = dirs::home_dir().expect("Could not determine home directory");
-    home.join(".openflow").join("models")
+    home.join(".hivecommand").join("models")
 }
 
 /// Returns the path for a given model size

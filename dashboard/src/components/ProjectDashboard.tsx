@@ -208,7 +208,7 @@ function ProjectForm({
       onSubmit();
       if (data.project?.id) {
         setTimeout(() => {
-          const openEvent = new CustomEvent('openflow:open-project', {
+          const openEvent = new CustomEvent('hivecommand:open-project', {
             detail: { id: data.project.id, name: data.project.name },
           });
           window.dispatchEvent(openEvent);
@@ -1207,8 +1207,8 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
       const detail = (e as CustomEvent).detail;
       if (detail?.id && detail?.name) onOpenProject(detail.id, detail.name);
     };
-    window.addEventListener('openflow:open-project', handler);
-    return () => window.removeEventListener('openflow:open-project', handler);
+    window.addEventListener('hivecommand:open-project', handler);
+    return () => window.removeEventListener('hivecommand:open-project', handler);
   }, [onOpenProject]);
 
   const { data: projectsData, isLoading: loadingProjects } = useQuery({

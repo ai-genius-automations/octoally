@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# OpenFlow CLI launcher
-# Usage: openflow [start|stop|restart|status|update|channel|logs|install-service|uninstall-service]
+# HiveCommand CLI launcher
+# Usage: hivecommand [start|stop|restart|status|update|channel|logs|install-service|uninstall-service]
 
 set -euo pipefail
 
 # Resolve install directory (follow symlinks to find the real script location)
 REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
-OPENFLOW_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+HIVECOMMAND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-CONFIG_FILE="$OPENFLOW_DIR/.openflow"
-VERSION_FILE="$OPENFLOW_DIR/version.json"
+CONFIG_FILE="$HIVECOMMAND_DIR/.hivecommand"
+VERSION_FILE="$HIVECOMMAND_DIR/version.json"
 
 # Colors
 RED='\033[0;31m'
@@ -20,10 +20,10 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-log_info()  { echo -e "${CYAN}[OpenFlow]${NC} $1"; }
-log_ok()    { echo -e "${GREEN}[OpenFlow]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[OpenFlow]${NC} $1"; }
-log_error() { echo -e "${RED}[OpenFlow]${NC} $1"; }
+log_info()  { echo -e "${CYAN}[HiveCommand]${NC} $1"; }
+log_ok()    { echo -e "${GREEN}[HiveCommand]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[HiveCommand]${NC} $1"; }
+log_error() { echo -e "${RED}[HiveCommand]${NC} $1"; }
 
 get_config_val() {
   local key="$1"
@@ -52,21 +52,21 @@ detect_os() {
 OS="$(detect_os)"
 
 # PID file for direct-run mode (non-service)
-PID_FILE="$OPENFLOW_DIR/.openflow.pid"
+PID_FILE="$HIVECOMMAND_DIR/.hivecommand.pid"
 
 cmd_start() {
   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    log_warn "OpenFlow is already running (PID $(cat "$PID_FILE"))"
+    log_warn "HiveCommand is already running (PID $(cat "$PID_FILE"))"
     return 0
   fi
 
-  log_info "Starting OpenFlow server..."
-  mkdir -p "$OPENFLOW_DIR/logs"
-  cd "$OPENFLOW_DIR/server"
-  NODE_ENV=production node dist/index.js >> "$OPENFLOW_DIR/logs/openflow.log" 2>&1 &
+  log_info "Starting HiveCommand server..."
+  mkdir -p "$HIVECOMMAND_DIR/logs"
+  cd "$HIVECOMMAND_DIR/server"
+  NODE_ENV=production node dist/index.js >> "$HIVECOMMAND_DIR/logs/hivecommand.log" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
-  log_ok "OpenFlow started (PID $pid)"
+  log_ok "HiveCommand started (PID $pid)"
   log_info "Dashboard: http://localhost:42010"
 }
 
@@ -75,7 +75,7 @@ cmd_stop() {
     local pid
     pid=$(cat "$PID_FILE")
     if kill -0 "$pid" 2>/dev/null; then
-      log_info "Stopping OpenFlow (PID $pid)..."
+      log_info "Stopping HiveCommand (PID $pid)..."
       kill "$pid"
       for i in $(seq 1 10); do
         if ! kill -0 "$pid" 2>/dev/null; then break; fi
@@ -85,13 +85,13 @@ cmd_stop() {
         kill -9 "$pid" 2>/dev/null || true
       fi
       rm -f "$PID_FILE"
-      log_ok "OpenFlow stopped"
+      log_ok "HiveCommand stopped"
     else
       rm -f "$PID_FILE"
-      log_warn "OpenFlow was not running (stale PID file removed)"
+      log_warn "HiveCommand was not running (stale PID file removed)"
     fi
   else
-    log_warn "OpenFlow is not running (no PID file)"
+    log_warn "HiveCommand is not running (no PID file)"
   fi
 }
 
@@ -100,7 +100,7 @@ cmd_restart() {
   cmd_start
 }
 
-GITHUB_REPO="ai-genius-automations/openflow"
+GITHUB_REPO="ai-genius-automations/hivecommand"
 GITHUB_API_RELEASES="https://api.github.com/repos/$GITHUB_REPO/releases"
 
 # Get the user's configured channel (default: stable)
@@ -117,7 +117,7 @@ get_channel() {
 get_latest_github_version() {
   local channel
   channel=$(get_channel)
-  local cache_file="$OPENFLOW_DIR/.update-cache-${channel}"
+  local cache_file="$HIVECOMMAND_DIR/.update-cache-${channel}"
   local cache_max=300  # 5 minutes
 
   # Use cache if fresh
@@ -181,15 +181,15 @@ cmd_status() {
   version=$(get_local_version)
   channel=$(get_channel)
 
-  echo -e "${BOLD}OpenFlow v${version}${NC}"
-  echo "  Install dir:     $OPENFLOW_DIR"
+  echo -e "${BOLD}HiveCommand v${version}${NC}"
+  echo "  Install dir:     $HIVECOMMAND_DIR"
   echo "  Channel:         $channel"
 
   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     echo -e "  Status:          ${GREEN}running${NC} (PID $(cat "$PID_FILE"))"
-  elif [ "$OS" = "linux" ] && systemctl is-active --quiet openflow 2>/dev/null; then
+  elif [ "$OS" = "linux" ] && systemctl is-active --quiet hivecommand 2>/dev/null; then
     echo -e "  Status:          ${GREEN}running${NC} (systemd)"
-  elif [ "$OS" = "macos" ] && launchctl list com.aigenius.openflow &>/dev/null; then
+  elif [ "$OS" = "macos" ] && launchctl list com.aigenius.hivecommand &>/dev/null; then
     echo -e "  Status:          ${GREEN}running${NC} (launchd)"
   else
     echo -e "  Status:          ${RED}stopped${NC}"
@@ -202,7 +202,7 @@ cmd_status() {
     latest_version=$(echo "$latest_info" | cut -d'|' -f1)
     release_name=$(echo "$latest_info" | cut -d'|' -f2-)
     if [ -n "$latest_version" ] && [ "$latest_version" != "$version" ]; then
-      echo -e "  Update:          ${YELLOW}v${latest_version} available${NC} (run: openflow update)"
+      echo -e "  Update:          ${YELLOW}v${latest_version} available${NC} (run: hivecommand update)"
       [ -n "$release_name" ] && echo "                   $release_name"
     else
       echo "  Update:          up to date"
@@ -253,9 +253,9 @@ cmd_update() {
   fi
 
   # Run the local update script (git pull + rebuild)
-  local update_script="$OPENFLOW_DIR/scripts/update.sh"
+  local update_script="$HIVECOMMAND_DIR/scripts/update.sh"
   if [ -f "$update_script" ]; then
-    export OPENFLOW_DIR="$OPENFLOW_DIR"
+    export HIVECOMMAND_DIR="$HIVECOMMAND_DIR"
     bash "$update_script"
     local exit_code=$?
 
@@ -271,7 +271,7 @@ cmd_update() {
     fi
   else
     log_error "Update script not found: $update_script"
-    log_info "You can update manually: cd $OPENFLOW_DIR && git pull && npm run build"
+    log_info "You can update manually: cd $HIVECOMMAND_DIR && git pull && npm run build"
     exit 1
   fi
 }
@@ -289,7 +289,7 @@ cmd_channel() {
     echo "  beta     Pre-release testing"
     echo "  canary   Latest development builds"
     echo ""
-    echo "Switch with: openflow channel <name>"
+    echo "Switch with: hivecommand channel <name>"
     return 0
   fi
 
@@ -302,7 +302,7 @@ cmd_channel() {
   esac
 
   if [ ! -f "$CONFIG_FILE" ]; then
-    log_error "No .openflow config found. Run the installer first."
+    log_error "No .hivecommand config found. Run the installer first."
     exit 1
   fi
 
@@ -312,17 +312,17 @@ cmd_channel() {
   mv "$tmp" "$CONFIG_FILE"
 
   log_ok "Switched to $target_channel channel"
-  log_info "Run 'openflow update' to pull the latest $target_channel release"
+  log_info "Run 'hivecommand update' to pull the latest $target_channel release"
 }
 
 cmd_logs() {
-  if [ "$OS" = "linux" ] && systemctl is-active --quiet openflow 2>/dev/null; then
-    journalctl -u openflow -f --no-pager
-  elif [ -f "$OPENFLOW_DIR/logs/openflow.log" ]; then
-    tail -f "$OPENFLOW_DIR/logs/openflow.log"
+  if [ "$OS" = "linux" ] && systemctl is-active --quiet hivecommand 2>/dev/null; then
+    journalctl -u hivecommand -f --no-pager
+  elif [ -f "$HIVECOMMAND_DIR/logs/hivecommand.log" ]; then
+    tail -f "$HIVECOMMAND_DIR/logs/hivecommand.log"
   else
     log_info "Starting server in foreground (Ctrl+C to stop)..."
-    cd "$OPENFLOW_DIR/server"
+    cd "$HIVECOMMAND_DIR/server"
     NODE_ENV=production node dist/index.js
   fi
 }
@@ -334,36 +334,36 @@ cmd_install_service() {
 
   if [ "$OS" = "linux" ]; then
     log_info "Installing systemd service..."
-    local service_file="$OPENFLOW_DIR/scripts/service/openflow.service"
+    local service_file="$HIVECOMMAND_DIR/scripts/service/hivecommand.service"
     if [ ! -f "$service_file" ]; then
       log_error "Service file not found: $service_file"
       exit 1
     fi
-    local target="/etc/systemd/system/openflow.service"
-    sed "s|__OPENFLOW_DIR__|$OPENFLOW_DIR|g; s|__USER__|$real_user|g" "$service_file" > "$target" 2>/dev/null \
-      || sed "s|__OPENFLOW_DIR__|$OPENFLOW_DIR|g; s|__USER__|$real_user|g" "$service_file" | sudo tee "$target" > /dev/null
+    local target="/etc/systemd/system/hivecommand.service"
+    sed "s|__HIVECOMMAND_DIR__|$HIVECOMMAND_DIR|g; s|__USER__|$real_user|g" "$service_file" > "$target" 2>/dev/null \
+      || sed "s|__HIVECOMMAND_DIR__|$HIVECOMMAND_DIR|g; s|__USER__|$real_user|g" "$service_file" | sudo tee "$target" > /dev/null
     if [ "$(id -u)" = "0" ]; then
       systemctl daemon-reload
-      systemctl enable openflow
-      systemctl start openflow
+      systemctl enable hivecommand
+      systemctl start hivecommand
     else
       sudo systemctl daemon-reload
-      sudo systemctl enable openflow
-      sudo systemctl start openflow
+      sudo systemctl enable hivecommand
+      sudo systemctl start hivecommand
     fi
     log_ok "Systemd service installed and started"
-    log_info "Manage with: sudo systemctl {start|stop|restart|status} openflow"
+    log_info "Manage with: sudo systemctl {start|stop|restart|status} hivecommand"
 
   elif [ "$OS" = "macos" ]; then
     log_info "Installing launchd service..."
-    local plist_file="$OPENFLOW_DIR/scripts/service/com.aigenius.openflow.plist"
+    local plist_file="$HIVECOMMAND_DIR/scripts/service/com.aigenius.hivecommand.plist"
     if [ ! -f "$plist_file" ]; then
       log_error "Plist file not found: $plist_file"
       exit 1
     fi
-    mkdir -p "$OPENFLOW_DIR/logs"
-    local target="$HOME/Library/LaunchAgents/com.aigenius.openflow.plist"
-    sed "s|__OPENFLOW_DIR__|$OPENFLOW_DIR|g; s|__USER__|$(whoami)|g" "$plist_file" > "$target"
+    mkdir -p "$HIVECOMMAND_DIR/logs"
+    local target="$HOME/Library/LaunchAgents/com.aigenius.hivecommand.plist"
+    sed "s|__HIVECOMMAND_DIR__|$HIVECOMMAND_DIR|g; s|__USER__|$(whoami)|g" "$plist_file" > "$target"
     launchctl load "$target"
     log_ok "Launchd service installed and started"
     log_info "Manage with: launchctl {load|unload} $target"
@@ -378,21 +378,21 @@ cmd_uninstall_service() {
   if [ "$OS" = "linux" ]; then
     log_info "Removing systemd service..."
     if [ "$(id -u)" = "0" ]; then
-      systemctl stop openflow 2>/dev/null || true
-      systemctl disable openflow 2>/dev/null || true
-      rm -f /etc/systemd/system/openflow.service
+      systemctl stop hivecommand 2>/dev/null || true
+      systemctl disable hivecommand 2>/dev/null || true
+      rm -f /etc/systemd/system/hivecommand.service
       systemctl daemon-reload
     else
-      sudo systemctl stop openflow 2>/dev/null || true
-      sudo systemctl disable openflow 2>/dev/null || true
-      sudo rm -f /etc/systemd/system/openflow.service
+      sudo systemctl stop hivecommand 2>/dev/null || true
+      sudo systemctl disable hivecommand 2>/dev/null || true
+      sudo rm -f /etc/systemd/system/hivecommand.service
       sudo systemctl daemon-reload
     fi
     log_ok "Systemd service removed"
 
   elif [ "$OS" = "macos" ]; then
     log_info "Removing launchd service..."
-    local target="$HOME/Library/LaunchAgents/com.aigenius.openflow.plist"
+    local target="$HOME/Library/LaunchAgents/com.aigenius.hivecommand.plist"
     launchctl unload "$target" 2>/dev/null || true
     rm -f "$target"
     log_ok "Launchd service removed"
@@ -400,14 +400,14 @@ cmd_uninstall_service() {
 }
 
 cmd_help() {
-  echo -e "${BOLD}OpenFlow CLI${NC}"
+  echo -e "${BOLD}HiveCommand CLI${NC}"
   echo ""
-  echo "Usage: openflow <command>"
+  echo "Usage: hivecommand <command>"
   echo ""
   echo "Commands:"
-  echo "  start              Start the OpenFlow server"
-  echo "  stop               Stop the OpenFlow server"
-  echo "  restart            Restart the OpenFlow server"
+  echo "  start              Start the HiveCommand server"
+  echo "  stop               Stop the HiveCommand server"
+  echo "  restart            Restart the HiveCommand server"
   echo "  status             Show server status, version, and channel info"
   echo "  update             Check for and apply updates from current channel"
   echo "  channel [name]     Show or switch release channel (stable/beta/canary)"

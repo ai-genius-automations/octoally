@@ -1,7 +1,7 @@
 {
-  "name": "@openflow/server",
+  "name": "@hivecommand/server",
   "version": "0.1.12-alpha",
-  "description": "OpenFlow backend server — Fastify + SQLite + WebSocket",
+  "description": "HiveCommand backend server — Fastify + SQLite + WebSocket",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
   "type": "module",

@@ -115,7 +115,7 @@ export function AgentGuideModal({ onClose, projectName, projectPath, task, addit
           {/* Intro */}
           <Section title="Overview">
             <p>
-              External bot agents (like OpenClaw) can fully control OpenFlow sessions via the REST API.
+              External bot agents (like OpenClaw) can fully control HiveCommand sessions via the REST API.
               Create sessions, send commands, read output, and respond to prompts — all programmatically.
             </p>
           </Section>
@@ -359,10 +359,10 @@ function Rule({ children }: { children: React.ReactNode }) {
 }
 
 function generatePlainTextGuide(baseUrl: string): string {
-  return `# OpenFlow Agent Integration Guide
+  return `# HiveCommand Agent Integration Guide
 
 ## Overview
-External bot agents can fully control OpenFlow sessions via the REST API.
+External bot agents can fully control HiveCommand sessions via the REST API.
 Create sessions, send commands, read output, and respond to prompts — all programmatically.
 Base URL: ${baseUrl}
 
@@ -498,7 +498,7 @@ function generateContextualGuide(baseUrl: string, projectName: string, projectPa
     ? `\n## Additional Instructions\n${additionalInstructions}\n`
     : '';
 
-  return `# OpenFlow Agent Command — ${projectName}
+  return `# HiveCommand Agent Command — ${projectName}
 
 ## Project Details
 - **Project:** ${projectName}

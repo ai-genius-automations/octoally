@@ -17,9 +17,9 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
      GET /agent/capabilities — Self-describing API for agent discovery
      ---------------------------------------------------------------- */
   app.get('/agent/capabilities', async () => ({
-    name: 'OpenFlow Agent API',
+    name: 'HiveCommand Agent API',
     version: '1.1.0',
-    description: 'Structured control layer for OpenFlow sessions. All session interaction MUST go through these APIs. The execute endpoint returns clean, readable output rendered through a virtual terminal — no ANSI artifacts, no TUI garbage.',
+    description: 'Structured control layer for HiveCommand sessions. All session interaction MUST go through these APIs. The execute endpoint returns clean, readable output rendered through a virtual terminal — no ANSI artifacts, no TUI garbage.',
     critical: [
       'NEVER read PTY output directly, scrape temp files, or parse raw terminal data.',
       'ALWAYS use POST /api/sessions/:id/execute to send input AND read output.',
@@ -150,7 +150,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     ],
     operationalGuidance: {
       responsiveness: {
-        description: 'Agents controlling OpenFlow sessions should run a periodic health check to avoid getting stuck on long-running commands or unresponsive sessions.',
+        description: 'Agents controlling HiveCommand sessions should run a periodic health check to avoid getting stuck on long-running commands or unresponsive sessions.',
         recommendation: 'Run a 30-second cron/interval that polls GET /api/sessions to check for stuck sessions and GET /api/sessions/:id/state for any session you are actively managing.',
         checkLogic: [
           'If a session state is "busy" for more than 120 seconds, consider sending POST /api/sessions/:id/cancel to unblock.',
@@ -164,7 +164,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
         forSlowCommands: { timeout: 120000, quiescenceMs: 5000 },
       },
       crashRecovery: {
-        description: 'OpenFlow automatically resumes crashed sessions that have a captured Claude session UUID. On server restart, sessions with a claude_session_id are re-spawned and sent /resume <uuid> to restore context.',
+        description: 'HiveCommand automatically resumes crashed sessions that have a captured Claude session UUID. On server restart, sessions with a claude_session_id are re-spawned and sent /resume <uuid> to restore context.',
         agentAction: 'After a server restart, poll GET /api/sessions?status=running to discover auto-resumed sessions. Your session IDs remain stable.',
       },
     },

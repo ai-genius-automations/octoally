@@ -19,7 +19,7 @@ import type { ReadStream } from 'fs';
 
 const execFileAsync = promisify(execFile);
 
-const TIMING_LOG = '/tmp/openflow-timing.log';
+const TIMING_LOG = '/tmp/hivecommand-timing.log';
 function tlog(s: string): void {
   try { appendFileSync(TIMING_LOG, `[${new Date().toISOString()}] ${s}\n`); } catch {}
 }
@@ -76,7 +76,7 @@ type ParentMessage =
    tmux helpers (same as session-manager but local to worker)
    ================================================================ */
 
-const TMUX_SERVER = 'openflow';
+const TMUX_SERVER = 'hivecommand';
 const tmuxBaseArgs = ['-L', TMUX_SERVER];
 
 function tmuxSessionName(sessionId: string): string {
@@ -113,7 +113,7 @@ async function tmuxCreate(
     ...runArgs,
   ], {
     cwd: projectPath,
-    env: { ...process.env, TERM: 'xterm-256color', OPENFLOW_SESSION: '1', HEADLESS_WORKERS_DISABLED: '1' } as Record<string, string>,
+    env: { ...process.env, TERM: 'xterm-256color', HIVECOMMAND_SESSION: '1', HEADLESS_WORKERS_DISABLED: '1' } as Record<string, string>,
   });
 
   try {
@@ -135,7 +135,7 @@ async function tmuxKill(sessionId: string): Promise<void> {
    ================================================================ */
 
 function dtachSocket(sessionId: string): string {
-  return `/tmp/openflow-${sessionId}.sock`;
+  return `/tmp/hivecommand-${sessionId}.sock`;
 }
 
 function dtachExists(sessionId: string): boolean {
@@ -159,7 +159,7 @@ async function dtachCreate(sessionId: string, projectPath: string, command: stri
     '-n', sock, '-Ez', shell, '-i', '-c', command,
   ], {
     cwd: projectPath,
-    env: { ...process.env, TERM: 'xterm-256color', OPENFLOW_SESSION: '1', HEADLESS_WORKERS_DISABLED: '1' } as Record<string, string>,
+    env: { ...process.env, TERM: 'xterm-256color', HIVECOMMAND_SESSION: '1', HEADLESS_WORKERS_DISABLED: '1' } as Record<string, string>,
   });
 }
 
@@ -184,7 +184,7 @@ async function dtachKill(sessionId: string): Promise<void> {
    pipe-pane: capture raw application output via FIFO
    ================================================================ */
 
-const PIPE_PANE_DIR = join(tmpdir(), 'openflow-pipes');
+const PIPE_PANE_DIR = join(tmpdir(), 'hivecommand-pipes');
 mkdirSync(PIPE_PANE_DIR, { recursive: true });
 
 function setupPipePane(sessionId: string): { stream: ReadStream; fifoPath: string } | null {
@@ -419,7 +419,7 @@ async function handleReconnect(msg: ReconnectMessage): Promise<void> {
   try {
     const hasTmuxSession = msg.useTmux && tmuxExists(msg.sessionId);
     const hasDtachSession = msg.useDtach && dtachExists(msg.sessionId);
-    const log = (s: string) => appendFileSync('/tmp/openflow-timing.log', s + '\n');
+    const log = (s: string) => appendFileSync('/tmp/hivecommand-timing.log', s + '\n');
     log(`[PTY-WORKER] ${msg.sessionId}: exists_check=${Date.now()-t0}ms`);
 
     if (!hasTmuxSession && !hasDtachSession) {

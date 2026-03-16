@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">⚡ OpenFlow</h1>
+  <h1 align="center">⚡ HiveCommand</h1>
   <p align="center">
     <strong>AI Coding Session Orchestration Dashboard</strong>
   </p>
@@ -10,15 +10,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ai-genius-automations/openflow/stargazers"><img src="https://img.shields.io/github/stars/ai-genius-automations/openflow?style=flat&color=gold" alt="GitHub Stars"></a>
-  <a href="https://github.com/ai-genius-automations/openflow/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0%20+%20Commons%20Clause-blue" alt="License"></a>
-  <a href="https://github.com/ai-genius-automations/openflow/releases"><img src="https://img.shields.io/github/v/release/ai-genius-automations/openflow?color=green" alt="Release"></a>
+  <a href="https://github.com/ai-genius-automations/hivecommand/stargazers"><img src="https://img.shields.io/github/stars/ai-genius-automations/hivecommand?style=flat&color=gold" alt="GitHub Stars"></a>
+  <a href="https://github.com/ai-genius-automations/hivecommand/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0%20+%20Commons%20Clause-blue" alt="License"></a>
+  <a href="https://github.com/ai-genius-automations/hivecommand/releases"><img src="https://img.shields.io/github/v/release/ai-genius-automations/hivecommand?color=green" alt="Release"></a>
   <a href="https://aigeniusautomations.com"><img src="https://img.shields.io/badge/by-AI%20Genius%20Automations-purple" alt="AI Genius Automations"></a>
 </p>
 
 ---
 
-> **OpenFlow** is a local-first orchestration dashboard for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [RuFlo](https://github.com/ruvnet/ruflo). Run multi-agent hive-mind sessions, single-agent workflows, and interactive terminals — all from a beautiful web UI with real-time streaming.
+> **HiveCommand** is a local-first orchestration dashboard for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [RuFlo](https://github.com/ruvnet/ruflo). Run multi-agent hive-mind sessions, single-agent workflows, and interactive terminals — all from a beautiful web UI with real-time streaming.
 
 ---
 
@@ -38,13 +38,13 @@
 </td>
 <td width="50%">
 <img src="docs/screenshots/web-tab.png" alt="Built-in Web Browser">
-<p><b>Built-in Web Browser</b> — Browse web pages directly inside OpenFlow alongside your coding sessions. Full browser with address bar, back/forward, and OAuth support — agents can build a web app and you can test it in the next tab without leaving the dashboard.</p>
+<p><b>Built-in Web Browser</b> — Browse web pages directly inside HiveCommand alongside your coding sessions. Full browser with address bar, back/forward, and OAuth support — agents can build a web app and you can test it in the next tab without leaving the dashboard.</p>
 </td>
 </tr>
 <tr>
 <td width="50%">
 <img src="docs/screenshots/terminal.png" alt="Terminal Session">
-<p><b>Interactive Terminals</b> — Full terminal sessions managed through tmux. Pop out to a system terminal anytime, do your work, then adopt the session back into OpenFlow — it picks up right where you left off. Sessions persist across server restarts.</p>
+<p><b>Interactive Terminals</b> — Full terminal sessions managed through tmux. Pop out to a system terminal anytime, do your work, then adopt the session back into HiveCommand — it picks up right where you left off. Sessions persist across server restarts.</p>
 </td>
 <td width="50%">
 <img src="docs/screenshots/source.png" alt="Git Source Control">
@@ -95,7 +95,7 @@
 | **Node.js 20+** | Runtime for the server | [nodejs.org](https://nodejs.org) |
 | **Claude Code** | AI coding agent | `npm install -g @anthropic-ai/claude-code` |
 
-> **Important:** Before installing OpenFlow, you must run Claude Code at least once to accept terms and enable non-interactive mode:
+> **Important:** Before installing HiveCommand, you must run Claude Code at least once to accept terms and enable non-interactive mode:
 > ```bash
 > claude                              # Accept terms & sign in
 > claude --dangerously-skip-permissions  # Enable non-interactive agent sessions
@@ -104,30 +104,30 @@
 ### One-Line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/openflow/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/hivecommand/main/scripts/install.sh | bash
 ```
 
 The installer will:
 1. Check for Node.js and Claude Code (offer to install if missing)
 2. Verify Claude Code has been initialized
 3. Download and extract the pre-built release
-4. Install the `openflow` CLI
+4. Install the `hivecommand` CLI
 5. Start the server
 6. Optionally install the desktop app
 
-> 💡 **Custom install location:** `OPENFLOW_INSTALL_DIR=/opt/openflow bash install.sh`
+> 💡 **Custom install location:** `HIVECOMMAND_INSTALL_DIR=/opt/hivecommand bash install.sh`
 
 ### What you get
 
 - **Web Dashboard:** http://localhost:42010
-- **CLI:** `openflow start | stop | restart | status | update | logs`
+- **CLI:** `hivecommand start | stop | restart | status | update | logs`
 - **Desktop App:** Optional Electron app with system tray and speech-to-text
 
 ### Manual Install (Development)
 
 ```bash
-git clone https://github.com/ai-genius-automations/openflow.git
-cd openflow
+git clone https://github.com/ai-genius-automations/hivecommand.git
+cd hivecommand
 
 # Server
 cd server && npm install && npm run build && cd ..
@@ -146,28 +146,28 @@ cd server && npm start
 
 ## 🛠️ How It Works
 
-OpenFlow is a dashboard that sits on top of **Claude Code** and **RuFlo**:
+HiveCommand is a dashboard that sits on top of **Claude Code** and **RuFlo**:
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** is Anthropic's CLI agent for coding tasks
 - **[RuFlo](https://github.com/ruvnet/ruflo)** adds multi-agent orchestration, hive-mind coordination, and memory to Claude Code
-- **OpenFlow** provides the UI to manage projects, launch sessions, and monitor everything in real-time
+- **HiveCommand** provides the UI to manage projects, launch sessions, and monitor everything in real-time
 
-When you add a project and enable RuFlo, OpenFlow automatically initializes the project with agent definitions, hive-mind support, and the configuration files Claude Code needs. You then launch sessions directly from the dashboard.
+When you add a project and enable RuFlo, HiveCommand automatically initializes the project with agent definitions, hive-mind support, and the configuration files Claude Code needs. You then launch sessions directly from the dashboard.
 
 ---
 
 ## 🖥️ CLI Commands
 
 ```bash
-openflow start              # Start the server (background)
-openflow stop               # Stop the server
-openflow restart            # Restart
-openflow status             # Show version, channel, and update info
-openflow update             # Check for and apply updates
-openflow channel [name]     # Switch release channel (stable/beta/canary)
-openflow logs               # Tail server logs
-openflow install-service    # Install as systemd/launchd service (auto-start)
-openflow uninstall-service  # Remove the system service
+hivecommand start              # Start the server (background)
+hivecommand stop               # Stop the server
+hivecommand restart            # Restart
+hivecommand status             # Show version, channel, and update info
+hivecommand update             # Check for and apply updates
+hivecommand channel [name]     # Switch release channel (stable/beta/canary)
+hivecommand logs               # Tail server logs
+hivecommand install-service    # Install as systemd/launchd service (auto-start)
+hivecommand uninstall-service  # Remove the system service
 ```
 
 ---
@@ -201,7 +201,7 @@ openflow uninstall-service  # Remove the system service
 ## 📂 Project Structure
 
 ```
-openflow/
+hivecommand/
 ├── server/              # Fastify backend
 │   └── src/
 │       ├── routes/      # REST API endpoints
@@ -231,11 +231,11 @@ cp .env.example .env
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `42010` | Server port |
-| `OPENFLOW_TOKEN` | *(none)* | Auth token for API/WebSocket — leave empty for local use |
-| `DB_PATH` | `~/.openflow/openflow.db` | SQLite database path |
+| `HIVECOMMAND_TOKEN` | *(none)* | Auth token for API/WebSocket — leave empty for local use |
+| `DB_PATH` | `~/.hivecommand/hivecommand.db` | SQLite database path |
 | `LOG_LEVEL` | `info` | Log verbosity (`trace` / `debug` / `info` / `warn` / `error`) |
-| `OPENFLOW_USE_TMUX` | `true` | Use tmux for session management |
-| `OPENFLOW_USE_DTACH` | `true` | Use dtach for session persistence |
+| `HIVECOMMAND_USE_TMUX` | `true` | Use tmux for session management |
+| `HIVECOMMAND_USE_DTACH` | `true` | Use dtach for session persistence |
 
 ---
 
@@ -247,7 +247,7 @@ The Electron desktop app adds:
 - Local speech-to-text via Whisper (no cloud needed)
 - Cloud STT via OpenAI Whisper API or Groq (API keys encrypted at rest)
 
-The desktop app is offered during installation, or can be downloaded from [GitHub Releases](https://github.com/ai-genius-automations/openflow/releases).
+The desktop app is offered during installation, or can be downloaded from [GitHub Releases](https://github.com/ai-genius-automations/hivecommand/releases).
 
 ---
 
@@ -266,6 +266,6 @@ Contributions are welcome! Please open an issue or pull request.
 
 **Apache License 2.0 with Commons Clause** — see [LICENSE](LICENSE) for full details.
 
-You are free to use, modify, and distribute OpenFlow. You may use it as a tool in your workflow to build products you charge for. However, you may not sell products or services whose value derives substantially from OpenFlow itself. Any product that incorporates OpenFlow source code must be distributed free of charge.
+You are free to use, modify, and distribute HiveCommand. You may use it as a tool in your workflow to build products you charge for. However, you may not sell products or services whose value derives substantially from HiveCommand itself. Any product that incorporates HiveCommand source code must be distributed free of charge.
 
 Copyright 2025 [AI Genius Automations](https://aigeniusautomations.com)

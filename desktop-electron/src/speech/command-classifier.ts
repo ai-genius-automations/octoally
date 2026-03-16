@@ -73,7 +73,7 @@ User: "clear text" → {"commandId": "clear-text", "param": ""}
 User: "clear line" → {"commandId": "clear-text", "param": ""}
 User: "refresh tab" → {"commandId": "refresh-tab", "param": ""}
 User: "refresh now" → {"commandId": "refresh-page", "param": ""}
-User: "stop openflow" → {"commandId": "dismiss-commands", "param": ""}
+User: "stop hivecommand" → {"commandId": "dismiss-commands", "param": ""}
 User: "stop listening" → {"commandId": "stop-listening", "param": ""}
 
 IMPORTANT: "open project <name>" is ALWAYS navigate-project, NOT navigate-home. navigate-home is only for "go home" or "show all projects" with NO project name after it.

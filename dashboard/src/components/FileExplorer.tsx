@@ -109,7 +109,7 @@ function formatSize(bytes: number): string {
 }
 
 function explorerStorageKey(instanceId: string) {
-  return `openflow-explorer-${instanceId}`;
+  return `hivecommand-explorer-${instanceId}`;
 }
 
 function loadExplorerState(instanceId: string): PersistedExplorerState | null {

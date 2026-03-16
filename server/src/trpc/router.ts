@@ -90,7 +90,7 @@ export const appRouter = router({
 
   // Health
   health: publicProcedure.query(() => ({
-    name: 'openflow',
+    name: 'hivecommand',
     version: '0.1.0',
     status: 'running',
     uptime: process.uptime(),

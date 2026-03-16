@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build a release archive for OpenFlow.
-# Produces: openflow-vX.Y.Z.tar.gz (pre-built, ready to extract and run)
+# Build a release archive for HiveCommand.
+# Produces: hivecommand-vX.Y.Z.tar.gz (pre-built, ready to extract and run)
 #
 # Usage:
 #   bash scripts/build-release.sh           # uses version from server/package.json
@@ -16,11 +16,11 @@ if [ -z "${VERSION:-}" ]; then
   VERSION=$(node -e "console.log(require('$ROOT_DIR/server/package.json').version)")
 fi
 
-ARCHIVE_NAME="openflow-v${VERSION}"
+ARCHIVE_NAME="hivecommand-v${VERSION}"
 BUILD_DIR="$(mktemp -d)"
 STAGE_DIR="$BUILD_DIR/$ARCHIVE_NAME"
 
-echo "Building OpenFlow v${VERSION} release..."
+echo "Building HiveCommand v${VERSION} release..."
 
 # --- Build server ---
 echo "  [1/5] Building server..."
@@ -51,7 +51,7 @@ cp -r "$ROOT_DIR/dashboard/dist" "$STAGE_DIR/dashboard/dist"
 
 # CLI + scripts + service files
 cp -r "$ROOT_DIR/bin" "$STAGE_DIR/bin"
-chmod +x "$STAGE_DIR/bin/openflow"
+chmod +x "$STAGE_DIR/bin/hivecommand"
 cp -r "$ROOT_DIR/scripts" "$STAGE_DIR/scripts"
 
 # Version metadata

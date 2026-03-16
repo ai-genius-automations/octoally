@@ -1,12 +1,12 @@
 {
-  "name": "openflow-desktop",
+  "name": "hivecommand-desktop",
   "version": "0.1.12-alpha",
-  "description": "OpenFlow Desktop App",
+  "description": "HiveCommand Desktop App",
   "author": {
     "name": "AI Genius Automations",
     "email": "support@aigeniusautomations.com"
   },
-  "homepage": "https://github.com/ai-genius-automations/openflow",
+  "homepage": "https://github.com/ai-genius-automations/hivecommand",
   "license": "Apache-2.0 WITH Commons-Clause",
   "main": "dist/main.js",
   "scripts": {
@@ -19,8 +19,8 @@
     "dist:win": "npm run build && electron-builder --win"
   },
   "build": {
-    "appId": "com.aigenius.openflow",
-    "productName": "OpenFlow",
+    "appId": "com.aigenius.hivecommand",
+    "productName": "HiveCommand",
     "directories": {
       "output": "release"
     },
@@ -36,7 +36,7 @@
       ],
       "category": "Development",
       "icon": "icons",
-      "executableName": "openflow-desktop"
+      "executableName": "hivecommand-desktop"
     },
     "mac": {
       "target": [

@@ -16,7 +16,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'OpenFlow',
+    title: 'HiveCommand',
     icon: path.join(__dirname, '..', 'icons', '128x128.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -50,14 +50,14 @@ function createWindow() {
 
   // Recover from renderer crashes — reload the page instead of showing a blank window
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error(`[OpenFlow] Renderer process gone: ${details.reason}`);
+    console.error(`[HiveCommand] Renderer process gone: ${details.reason}`);
     if (details.reason !== 'clean-exit') {
       setTimeout(() => mainWindow?.webContents.reload(), 500);
     }
   });
 
   mainWindow.webContents.on('unresponsive', () => {
-    console.warn('[OpenFlow] Window became unresponsive, reloading...');
+    console.warn('[HiveCommand] Window became unresponsive, reloading...');
     setTimeout(() => mainWindow?.webContents.reload(), 1000);
   });
 
@@ -92,21 +92,21 @@ app.whenReady().then(async () => {
   // Start server if port 42010 is not reachable (regardless of PID file state)
   let reachable = await isServerReachable();
   if (!reachable) {
-    console.log('[OpenFlow] Server not reachable, starting...');
+    console.log('[HiveCommand] Server not reachable, starting...');
     const started = await startServer(cliPath);
     if (started) {
-      console.log('[OpenFlow] Server started, waiting for it to become reachable...');
+      console.log('[HiveCommand] Server started, waiting for it to become reachable...');
       reachable = await waitForServer();
       if (reachable) {
-        console.log('[OpenFlow] Server is now reachable');
+        console.log('[HiveCommand] Server is now reachable');
       } else {
-        console.warn('[OpenFlow] Server started but not reachable after 10s');
+        console.warn('[HiveCommand] Server started but not reachable after 10s');
       }
     } else {
-      console.warn('[OpenFlow] Failed to start server');
+      console.warn('[HiveCommand] Failed to start server');
     }
   } else {
-    console.log('[OpenFlow] Server already reachable on port 42010');
+    console.log('[HiveCommand] Server already reachable on port 42010');
   }
 
   createWindow();
@@ -120,11 +120,11 @@ app.whenReady().then(async () => {
   webpageSession.setPermissionCheckHandler(() => true);
 
   // Strip "Electron" from webview session User-Agent so Google doesn't block OAuth.
-  // Also strip the app name (openflow-desktop) to look like a normal browser.
+  // Also strip the app name (hivecommand-desktop) to look like a normal browser.
   const defaultUA = webpageSession.getUserAgent();
   const cleanUA = defaultUA
     .replace(/\s*Electron\/\S+/g, '')
-    .replace(/\s*openflow-desktop\/\S+/g, '');
+    .replace(/\s*hivecommand-desktop\/\S+/g, '');
   webpageSession.setUserAgent(cleanUA);
 
   // Fix: Electron webview ERR_FAILED on OAuth callback URLs with large hash fragments.

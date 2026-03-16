@@ -5,7 +5,7 @@ import { getDb } from '../db/index.js';
 /**
  * Check if a session_id exists in the sessions table.
  * External hooks (Claude Code) send their own session IDs that don't match
- * OpenFlow sessions, so we null them out to avoid FK constraint failures.
+ * HiveCommand sessions, so we null them out to avoid FK constraint failures.
  */
 function resolveSessionId(sessionId?: string): string | undefined {
   if (!sessionId) return undefined;

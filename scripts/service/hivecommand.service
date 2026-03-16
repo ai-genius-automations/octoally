@@ -1,11 +1,11 @@
 [Unit]
-Description=OpenFlow Orchestration Dashboard
+Description=HiveCommand Orchestration Dashboard
 After=network.target
 
 [Service]
 Type=simple
 User=__USER__
-WorkingDirectory=__OPENFLOW_DIR__/server
+WorkingDirectory=__HIVECOMMAND_DIR__/server
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5

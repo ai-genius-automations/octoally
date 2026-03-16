@@ -14,11 +14,11 @@ use tauri::{
     WindowEvent,
 };
 
-/// Resolve the openflow CLI path by following symlinks
-fn openflow_cli_path() -> String {
+/// Resolve the hivecommand CLI path by following symlinks
+fn hivecommand_cli_path() -> String {
     // Try readlink -f on the standard install path
     if let Ok(output) = Command::new("readlink")
-        .args(["-f", "/usr/local/bin/openflow"])
+        .args(["-f", "/usr/local/bin/hivecommand"])
         .output()
     {
         let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -28,18 +28,18 @@ fn openflow_cli_path() -> String {
     }
     // Fallback: check ~/.local/bin
     if let Ok(home) = std::env::var("HOME") {
-        let local_path = format!("{}/.local/bin/openflow", home);
+        let local_path = format!("{}/.local/bin/hivecommand", home);
         if std::path::Path::new(&local_path).exists() {
             return local_path;
         }
     }
     // Last resort: rely on PATH
-    "openflow".to_string()
+    "hivecommand".to_string()
 }
 
-/// Check if OpenFlow server is currently running
+/// Check if HiveCommand server is currently running
 fn is_server_running(cli: &str) -> bool {
-    // Check PID file approach: resolve install dir from CLI, check .openflow.pid
+    // Check PID file approach: resolve install dir from CLI, check .hivecommand.pid
     if let Ok(output) = Command::new(cli).arg("status").output() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         return stdout.contains("running");
@@ -51,13 +51,13 @@ fn is_server_running(cli: &str) -> bool {
 fn is_service_installed() -> bool {
     #[cfg(target_os = "linux")]
     {
-        std::path::Path::new("/etc/systemd/system/openflow.service").exists()
+        std::path::Path::new("/etc/systemd/system/hivecommand.service").exists()
     }
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
             return std::path::Path::new(&format!(
-                "{}/Library/LaunchAgents/com.aigenius.openflow.plist",
+                "{}/Library/LaunchAgents/com.aigenius.hivecommand.plist",
                 home
             ))
             .exists();
@@ -71,7 +71,7 @@ fn is_service_installed() -> bool {
 }
 
 fn main() {
-    let cli_path = openflow_cli_path();
+    let cli_path = hivecommand_cli_path();
     let cli_path_arc = Arc::new(cli_path);
 
     tauri::Builder::default()
@@ -99,7 +99,7 @@ fn main() {
                 "main",
                 tauri::WebviewUrl::External("http://localhost:42010".parse().unwrap()),
             )
-            .title("OpenFlow")
+            .title("HiveCommand")
             .inner_size(1400.0, 900.0)
             .min_inner_size(800.0, 600.0)
             .resizable(true)
@@ -172,7 +172,7 @@ fn main() {
             // On macOS, left-click opens the window directly, right-click shows menu.
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().cloned().unwrap())
-                .tooltip("OpenFlow")
+                .tooltip("HiveCommand")
                 .menu(&menu)
                 .show_menu_on_left_click(false) // Works on macOS, no-op on Linux
                 .on_menu_event(move |app, event| {
@@ -301,5 +301,5 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running OpenFlow desktop app");
+        .expect("error while running HiveCommand desktop app");
 }

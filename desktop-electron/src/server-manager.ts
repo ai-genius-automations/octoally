@@ -3,11 +3,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 
-/** Resolve the openflow CLI path (mirrors Rust logic in desktop/src/main.rs) */
+/** Resolve the hivecommand CLI path (mirrors Rust logic in desktop/src/main.rs) */
 export function resolveCliPath(): string {
   // Try readlink -f on the standard install path
   try {
-    const resolved = execFileSync('readlink', ['-f', '/usr/local/bin/openflow'], {
+    const resolved = execFileSync('readlink', ['-f', '/usr/local/bin/hivecommand'], {
       encoding: 'utf-8',
       timeout: 3000,
     }).trim();
@@ -17,15 +17,15 @@ export function resolveCliPath(): string {
   // Fallback: check ~/.local/bin
   const home = process.env.HOME;
   if (home) {
-    const localPath = path.join(home, '.local/bin/openflow');
+    const localPath = path.join(home, '.local/bin/hivecommand');
     if (fs.existsSync(localPath)) return localPath;
   }
 
   // Last resort: rely on PATH
-  return 'openflow';
+  return 'hivecommand';
 }
 
-/** Check if OpenFlow server is currently running */
+/** Check if HiveCommand server is currently running */
 export function isServerRunning(cli: string): boolean {
   try {
     const stdout = execFileSync(cli, ['status'], {
@@ -96,13 +96,13 @@ export async function waitForServer(maxWaitMs = 10000): Promise<boolean> {
 /** Check if the systemd/launchd service is installed */
 export function isServiceInstalled(): boolean {
   if (process.platform === 'linux') {
-    return fs.existsSync('/etc/systemd/system/openflow.service');
+    return fs.existsSync('/etc/systemd/system/hivecommand.service');
   }
   if (process.platform === 'darwin') {
     const home = process.env.HOME;
     if (home) {
       return fs.existsSync(
-        path.join(home, 'Library/LaunchAgents/com.aigenius.openflow.plist'),
+        path.join(home, 'Library/LaunchAgents/com.aigenius.hivecommand.plist'),
       );
     }
   }

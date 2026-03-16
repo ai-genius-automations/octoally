@@ -1,6 +1,6 @@
-# OpenFlow Desktop — Tauri (Inactive)
+# HiveCommand Desktop — Tauri (Inactive)
 
-This directory contains a Tauri-based native desktop app for OpenFlow. It builds and runs, but is **not currently used** in favor of the Electron app (`desktop-electron/`).
+This directory contains a Tauri-based native desktop app for HiveCommand. It builds and runs, but is **not currently used** in favor of the Electron app (`desktop-electron/`).
 
 ## Why Electron instead of Tauri?
 
@@ -25,4 +25,4 @@ cargo tauri dev    # Development mode
 cargo tauri build  # Production build
 ```
 
-The Tauri app connects to the same OpenFlow server as the Electron app — they're interchangeable frontends.
+The Tauri app connects to the same HiveCommand server as the Electron app — they're interchangeable frontends.

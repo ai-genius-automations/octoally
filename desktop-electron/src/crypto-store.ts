@@ -2,7 +2,7 @@
  * Encrypt-at-rest for sensitive config values (API keys).
  *
  * Uses AES-256-GCM with a key derived from a random salt (stored in
- * ~/.openflow/.keyfile) + machine-specific context via PBKDF2.
+ * ~/.hivecommand/.keyfile) + machine-specific context via PBKDF2.
  *
  * Encrypted values are stored as "enc:<base64>" strings.
  * Plaintext values (legacy) are detected and re-encrypted on next save.
@@ -31,15 +31,15 @@ function machineContext(): string {
   const userInfo = os.userInfo();
   // uid is numeric on Linux/macOS, username as fallback
   const userId = userInfo.uid !== -1 ? String(userInfo.uid) : userInfo.username;
-  return `openflow:${hostname}:${userId}`;
+  return `hivecommand:${hostname}:${userId}`;
 }
 
 // ---------------------------------------------------------------------------
-// Salt management — random 32-byte salt stored in ~/.openflow/.keyfile
+// Salt management — random 32-byte salt stored in ~/.hivecommand/.keyfile
 // ---------------------------------------------------------------------------
 
 function keyfilePath(): string {
-  return path.join(os.homedir(), '.openflow', '.keyfile');
+  return path.join(os.homedir(), '.hivecommand', '.keyfile');
 }
 
 function getSalt(): Buffer {

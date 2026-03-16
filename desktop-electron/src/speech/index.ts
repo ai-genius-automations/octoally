@@ -44,7 +44,7 @@ function modelDownloadUrl(size: string): string {
 }
 
 function modelsDir(): string {
-  return path.join(os.homedir(), '.openflow', 'models');
+  return path.join(os.homedir(), '.hivecommand', 'models');
 }
 
 function modelPath(size: string): string {
@@ -52,7 +52,7 @@ function modelPath(size: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Config persistence (~/.openflow/stt-config.json)
+// Config persistence (~/.hivecommand/stt-config.json)
 // ---------------------------------------------------------------------------
 
 interface SttConfig {
@@ -68,7 +68,7 @@ interface SttConfig {
 }
 
 function configPath(): string {
-  return path.join(os.homedir(), '.openflow', 'stt-config.json');
+  return path.join(os.homedir(), '.hivecommand', 'stt-config.json');
 }
 
 function loadConfig(): Partial<SttConfig> {
@@ -114,7 +114,7 @@ function matchesWakePhrase(transcription: string, wakePhrase: string): boolean {
   if (normalized.includes(phrase)) return true;
 
   // Fuzzy: check if phrase words appear in sequence (allowing extra words)
-  // Handles: "hey open flow" vs "hey openflow", etc.
+  // Handles: "hey open flow" vs "hey hivecommand", etc.
   const words = normalized.split(/\s+/);
   const phraseWords = phrase.split(/\s+/);
 
@@ -127,20 +127,20 @@ function matchesWakePhrase(transcription: string, wakePhrase: string): boolean {
   if (pi === phraseWords.length) return true;
 
   // Also try joining all words to handle splits/merges
-  // e.g., "open flow" should match "openflow", "heyopenflow" should match "hey openflow"
+  // e.g., "open flow" should match "hivecommand", "heyhivecommand" should match "hey hivecommand"
   const joinedPhrase = phraseWords.join('');
   const joinedWords = words.join('');
   if (joinedWords.includes(joinedPhrase)) return true;
 
-  // Common tiny model mishearings for "hey openflow"
+  // Common tiny model mishearings for "hey hivecommand"
   // The tiny model often hears fast speech as slightly different words
   const aliases: Record<string, string[]> = {
-    'hey openflow': [
-      'hey open flow', 'a openflow', 'a open flow',
-      'hey openflow', 'heyopenflow', 'hey open flo',
+    'hey hivecommand': [
+      'hey open flow', 'a hivecommand', 'a open flow',
+      'hey hivecommand', 'heyhivecommand', 'hey open flo',
       'hey openflo', 'hey openfloor', 'hey open floor',
-      'hey openfl', 'hey open fl', 'hey openflow',
-      'hey, openflow', 'hay openflow', 'hey, open flow',
+      'hey openfl', 'hey open fl', 'hey hivecommand',
+      'hey, hivecommand', 'hay hivecommand', 'hey, open flow',
       'hey opin flow', 'hey open fo', 'hey openfo',
     ],
   };
@@ -226,7 +226,7 @@ const state: SpeechState = {
   speaking: false,
   lastActivity: Date.now(),
   selectedDevice: undefined,
-  wakePhrase: cfg.wakePhrase || 'hey openflow',
+  wakePhrase: cfg.wakePhrase || 'hey hivecommand',
   wakeWordPhase: 'passive',
   activeTimeout: null,
 };
@@ -486,7 +486,7 @@ export function registerSpeechHandlers() {
           throw new Error(
             `Failed to auto-install whisper.cpp: ${e}. ` +
             'You can install manually: sudo apt install cmake g++ && ' +
-            'or place whisper-cli in ~/.openflow/bin/',
+            'or place whisper-cli in ~/.hivecommand/bin/',
           );
         }
       }

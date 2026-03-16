@@ -5,12 +5,12 @@ import { existsSync } from 'fs';
 import { getDb } from '../db/index.js';
 
 /**
- * Shared ruflo-run.sh location: ~/.openflow/ruflo-run.sh
+ * Shared ruflo-run.sh location: ~/.hivecommand/ruflo-run.sh
  * Created/updated by the DevCortex installer. Keeps a local ruflo install
- * at ~/.openflow/ruflo/ and only downloads when a newer version exists.
+ * at ~/.hivecommand/ruflo/ and only downloads when a newer version exists.
  * Falls back to npx if the script doesn't exist (no DevCortex installed).
  */
-const RUFLO_RUN = join(homedir(), '.openflow', 'ruflo-run.sh');
+const RUFLO_RUN = join(homedir(), '.hivecommand', 'ruflo-run.sh');
 const RUFLO_CMD = existsSync(RUFLO_RUN) ? `bash ${RUFLO_RUN}` : 'npx ruflo@latest';
 
 /** Default values for all settings */

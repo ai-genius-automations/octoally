@@ -48,9 +48,9 @@ function migrateSettingsHookPaths(projectPath: string): string | null {
   return null;
 }
 
-/** Shared ruflo-run.sh — created by DevCortex installer, shared with OpenFlow.
+/** Shared ruflo-run.sh — created by DevCortex installer, shared with HiveCommand.
  *  Falls back to npx if the script doesn't exist (no DevCortex installed). */
-const RUFLO_RUN = join(homedir(), '.openflow', 'ruflo-run.sh');
+const RUFLO_RUN = join(homedir(), '.hivecommand', 'ruflo-run.sh');
 const HAS_RUFLO_RUN = existsSync(RUFLO_RUN);
 
 /**
@@ -108,15 +108,15 @@ export interface Project {
   updated_at: string;
 }
 
-/** ~/.openflow/projects.json — portable backup, not the source of truth */
-const OPENFLOW_DIR = join(homedir(), '.openflow');
-const PROJECTS_FILE = join(OPENFLOW_DIR, 'projects.json');
+/** ~/.hivecommand/projects.json — portable backup, not the source of truth */
+const HIVECOMMAND_DIR = join(homedir(), '.hivecommand');
+const PROJECTS_FILE = join(HIVECOMMAND_DIR, 'projects.json');
 
 /** Export current DB projects to the config file (for portability across DB resets) */
 async function exportToConfig(): Promise<void> {
   const db = getDb();
   const rows = db.prepare('SELECT name, path, description, ruflo_prompt, openclaw_prompt, default_web_url FROM projects ORDER BY name COLLATE NOCASE').all();
-  await mkdir(OPENFLOW_DIR, { recursive: true });
+  await mkdir(HIVECOMMAND_DIR, { recursive: true });
   await writeFile(PROJECTS_FILE, JSON.stringify({ projects: rows }, null, 2), 'utf-8');
 }
 
@@ -149,7 +149,7 @@ export async function initProjects(): Promise<void> {
       imported++;
     }
     if (imported > 0) {
-      console.log(`  Imported ${imported} projects from ~/.openflow/projects.json`);
+      console.log(`  Imported ${imported} projects from ~/.hivecommand/projects.json`);
     }
   } catch {
     // No config file — that's fine, new user starts with empty projects
@@ -462,7 +462,7 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
 
     const statuses: Record<string, { installed: boolean; eligible: boolean; version?: string }> = {};
     for (const p of projects) {
-      const isOpenflowProject = p.name.toLowerCase().startsWith('openflow');
+      const isHivecommandProject = p.name.toLowerCase().startsWith('hivecommand');
       const devcortexFile = join(p.path, '.devcortex');
       const installed = existsSync(devcortexFile);
       let version: string | undefined;
@@ -474,7 +474,7 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       }
       statuses[p.id] = {
         installed,
-        eligible: !isOpenflowProject && globalInstalled,
+        eligible: !isHivecommandProject && globalInstalled,
         version,
       };
     }
@@ -482,7 +482,7 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
     return { globalInstalled, statuses };
   });
 
-  // Install DevCortex for a project (runs the openflow installer script)
+  // Install DevCortex for a project (runs the hivecommand installer script)
   app.post<{
     Params: { id: string };
   }>('/projects/:id/devcortex-install', async (req, reply) => {
@@ -490,9 +490,9 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id) as Project | undefined;
     if (!project) return reply.status(404).send({ error: 'Project not found' });
 
-    // Don't allow install on openflow projects
-    if (project.name.toLowerCase().startsWith('openflow')) {
-      return reply.status(400).send({ error: 'DevCortex cannot be installed on OpenFlow projects' });
+    // Don't allow install on hivecommand projects
+    if (project.name.toLowerCase().startsWith('hivecommand')) {
+      return reply.status(400).send({ error: 'DevCortex cannot be installed on HiveCommand projects' });
     }
 
     // Read global config for the API key
@@ -512,8 +512,8 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'DevCortex global config missing api_key or server_url' });
     }
 
-    // Run the OpenFlow-specific DevCortex installer via curl
-    const installUrl = `${globalConfig.server_url}/api/setup/install-openflow.sh?key=${globalConfig.api_key}`;
+    // Run the HiveCommand-specific DevCortex installer via curl
+    const installUrl = `${globalConfig.server_url}/api/setup/install-hivecommand.sh?key=${globalConfig.api_key}`;
     try {
       const result = await execFileAsync('bash', ['-c', `curl -fsSL "${installUrl}" | bash`], {
         cwd: project.path,

@@ -20,7 +20,7 @@ const { SerializeAddon } = nodeRequire('@xterm/addon-serialize') as { SerializeA
 const execFileAsync = promisify(execFile);
 const readFileAsync = promisify(readFile);
 
-const TIMING_LOG = '/tmp/openflow-timing.log';
+const TIMING_LOG = '/tmp/hivecommand-timing.log';
 function tlog(s: string): void {
   try { appendFileSync(TIMING_LOG, `[${new Date().toISOString()}] ${s}\n`); } catch {}
 }
@@ -394,7 +394,7 @@ export function querySessionOutputSince(
    the worker process.
    ================================================================ */
 
-const TMUX_SERVER = 'openflow';
+const TMUX_SERVER = 'hivecommand';
 const tmuxBaseArgs = ['-L', TMUX_SERVER];
 
 function tmuxSessionName(sessionId: string): string {
@@ -411,8 +411,8 @@ async function tmuxExistsAsync(sessionId: string): Promise<boolean> {
   }
 }
 
-/** List all openflow tmux session IDs that are still alive */
-function tmuxListOpenflowSessionIds(): string[] {
+/** List all hivecommand tmux session IDs that are still alive */
+function tmuxListHivecommandSessionIds(): string[] {
   try {
     const output = execFileSync('tmux', [...tmuxBaseArgs, 'list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' });
     return output
@@ -430,7 +430,7 @@ function tmuxListOpenflowSessionIds(): string[] {
    ================================================================ */
 
 function dtachSocket(sessionId: string): string {
-  return `/tmp/openflow-${sessionId}.sock`;
+  return `/tmp/hivecommand-${sessionId}.sock`;
 }
 
 function dtachExists(sessionId: string): boolean {
@@ -456,14 +456,14 @@ async function dtachExistsAsync(sessionId: string): Promise<boolean> {
   }
 }
 
-/** List all openflow dtach sessions that are still alive */
-function dtachListOpenflowSessions(): string[] {
+/** List all hivecommand dtach sessions that are still alive */
+function dtachListHivecommandSessions(): string[] {
   try {
     const files = readdirSync('/tmp')
-      .filter(f => f.startsWith('openflow-') && f.endsWith('.sock'));
+      .filter(f => f.startsWith('hivecommand-') && f.endsWith('.sock'));
     const alive: string[] = [];
     for (const f of files) {
-      const sessionId = f.replace('openflow-', '').replace('.sock', '');
+      const sessionId = f.replace('hivecommand-', '').replace('.sock', '');
       if (dtachExists(sessionId)) {
         alive.push(sessionId);
       }
@@ -663,7 +663,7 @@ function wireWorker(sessionId: string, worker: ChildProcess, projectPath?: strin
         const taskSnippet = (() => {
           try { return (getDb().prepare('SELECT task FROM sessions WHERE id = ?').get(sessionId) as any)?.task?.slice(0, 60) ?? ''; } catch { return ''; }
         })();
-        pushSystemEvent(`[OpenFlow] Session ${sessionId} ${status} (exit ${msg.exitCode}): ${taskSnippet}`);
+        pushSystemEvent(`[HiveCommand] Session ${sessionId} ${status} (exit ${msg.exitCode}): ${taskSnippet}`);
 
         for (const ws of active.subscribers) {
           try {
@@ -817,7 +817,7 @@ export async function spawnClaudeFlow(sessionId: string, projectPath: string, ta
     data: { task, projectPath, tmux: config.useTmux, dtach: config.useDtach },
   });
 
-  pushSystemEvent(`[OpenFlow] Session ${sessionId} started: ${task.slice(0, 60)}`);
+  pushSystemEvent(`[HiveCommand] Session ${sessionId} started: ${task.slice(0, 60)}`);
 }
 
 export async function spawnTerminal(sessionId: string, projectPath: string, cols = 180, rows = 40): Promise<void> {
@@ -873,7 +873,7 @@ export async function spawnAgent(sessionId: string, projectPath: string, task: s
     data: { task, projectPath, tmux: config.useTmux, mode: 'agent', agentType },
   });
 
-  pushSystemEvent(`[OpenFlow] Agent ${agentType} session ${sessionId} started: ${task.slice(0, 60)}`);
+  pushSystemEvent(`[HiveCommand] Agent ${agentType} session ${sessionId} started: ${task.slice(0, 60)}`);
 }
 
 /**
@@ -1331,8 +1331,8 @@ export async function killSession(sessionId: string): Promise<boolean> {
 }
 
 /**
- * Release an OpenFlow session back to its dtach socket without killing the process.
- * Used by pop-out: tears down the OpenFlow worker/tmux wrapper but leaves the
+ * Release an HiveCommand session back to its dtach socket without killing the process.
+ * Used by pop-out: tears down the HiveCommand worker/tmux wrapper but leaves the
  * dtach master alive so a real terminal (or re-adopt) can connect to it.
  */
 export function releaseSession(sessionId: string): boolean {
@@ -1402,7 +1402,7 @@ export function getActiveSession(sessionId: string): ActiveSession | undefined {
 /**
  * Get the dtach socket path for a session.
  * For adopted sessions, returns the external socket path.
- * For regular sessions, returns the openflow dtach socket path.
+ * For regular sessions, returns the hivecommand dtach socket path.
  */
 export function getSessionSocketPath(sessionId: string): string | null {
   const active = activeSessions.get(sessionId);
@@ -1461,10 +1461,10 @@ export function killAllSessions(): void {
 }
 
 // killOrphanedClaudeProcesses was removed — it killed ANY claude process not on
-// an openflow tmux PTY, which incorrectly killed: (1) adopted external sessions
+// an hivecommand tmux PTY, which incorrectly killed: (1) adopted external sessions
 // whose claude runs on the real terminal's PTY, and (2) user-launched claude
 // sessions in their own terminals. Per-session cleanup in cleanupStaleRunningSessions
-// handles dead openflow sessions individually via killOrphanedDaemon/killOrphanedProcess.
+// handles dead hivecommand sessions individually via killOrphanedDaemon/killOrphanedProcess.
 
 /**
  * On server startup, handle sessions from previous run.
@@ -1485,8 +1485,8 @@ export async function cleanupStaleRunningSessions(): Promise<void> {
     if (stale.length === 0) { tlog(`[CLEANUP] no stale sessions, done in ${Date.now() - t0}ms`); return; }
 
     const t1 = Date.now();
-    const aliveDtach = config.useDtach ? new Set(dtachListOpenflowSessions()) : new Set<string>();
-    const aliveTmux = config.useTmux ? new Set(tmuxListOpenflowSessionIds()) : new Set<string>();
+    const aliveDtach = config.useDtach ? new Set(dtachListHivecommandSessions()) : new Set<string>();
+    const aliveTmux = config.useTmux ? new Set(tmuxListHivecommandSessionIds()) : new Set<string>();
     tlog(`[CLEANUP] session listing: ${Date.now() - t1}ms (${stale.length} stale, ${aliveTmux.size} tmux, ${aliveDtach.size} dtach)`);
     let detached = 0;
     let cleaned = 0;
@@ -1560,10 +1560,10 @@ export async function cleanupStaleRunningSessions(): Promise<void> {
   }
 
   // NOTE: We no longer run killOrphanedClaudeProcesses() here.
-  // That function killed ANY claude process not on an openflow tmux PTY,
+  // That function killed ANY claude process not on an hivecommand tmux PTY,
   // which is wrong — users run claude in their own terminals, and adopted
   // sessions have claude on external PTYs. Per-session cleanup above
-  // already handles dead openflow sessions individually.
+  // already handles dead hivecommand sessions individually.
 
   // Restore adoptedSockets from DB so adopted sessions aren't shown as
   // discoverable again after restart.
@@ -1701,7 +1701,7 @@ async function resumeCrashedSession(staleSession: Session, projectPath: string):
     data: { task, projectPath, claudeSessionId: claudeUuid },
   });
 
-  pushSystemEvent(`[OpenFlow] Session ${sessionId} resumed after crash: ${task.slice(0, 60)}`);
+  pushSystemEvent(`[HiveCommand] Session ${sessionId} resumed after crash: ${task.slice(0, 60)}`);
 }
 
 /* ================================================================
@@ -1734,10 +1734,10 @@ async function fuserPidsAsync(sockPath: string): Promise<number[]> {
   }
 }
 
-async function isOpenFlowOwnedAsync(pid: number): Promise<boolean> {
+async function isHiveCommandOwnedAsync(pid: number): Promise<boolean> {
   try {
     const environ = await readFileAsync(`/proc/${pid}/environ`, 'utf8');
-    return environ.includes('OPENFLOW_SESSION=');
+    return environ.includes('HIVECOMMAND_SESSION=') || environ.includes('OPENFLOW_SESSION=');
   } catch {
     return false;
   }
@@ -1760,7 +1760,7 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
       const hivePids = await fuserPidsAsync(sockPath);
       if (hivePids.length === 0) continue;
 
-      const ownerChecks = await Promise.all(hivePids.map(p => isOpenFlowOwnedAsync(p)));
+      const ownerChecks = await Promise.all(hivePids.map(p => isHiveCommandOwnedAsync(p)));
       if (ownerChecks.some(owned => owned)) continue;
 
       let sessionProjectPath = '';
@@ -1789,7 +1789,7 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
     }
   } catch { /* /tmp read failed */ }
 
-  // Also discover released OpenFlow tmux sessions (popped-out sessions)
+  // Also discover released HiveCommand tmux sessions (popped-out sessions)
   try {
     const db = getDb();
     const releasedSessions = db.prepare(`
@@ -1828,7 +1828,7 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
 }
 
 export async function adoptDtachSession(socketPath: string, projectId?: string): Promise<Session | null> {
-  // Handle re-adoption of released OpenFlow tmux sessions
+  // Handle re-adoption of released HiveCommand tmux sessions
   if (socketPath.startsWith('tmux:')) {
     return readoptReleasedSession(socketPath.replace('tmux:', ''), projectId);
   }
@@ -1839,7 +1839,7 @@ export async function adoptDtachSession(socketPath: string, projectId?: string):
   const socketPids = await fuserPidsAsync(socketPath);
   if (socketPids.length === 0) return null;
 
-  const ownerChecks = await Promise.all(socketPids.map(p => isOpenFlowOwnedAsync(p)));
+  const ownerChecks = await Promise.all(socketPids.map(p => isHiveCommandOwnedAsync(p)));
   if (ownerChecks.some(owned => owned)) return null;
 
   const baseName = socketPath.replace('.sock', '');
@@ -1882,7 +1882,7 @@ export async function adoptDtachSession(socketPath: string, projectId?: string):
 }
 
 /**
- * Re-adopt a released OpenFlow tmux session (popped-out and now being brought back).
+ * Re-adopt a released HiveCommand tmux session (popped-out and now being brought back).
  * Changes status from 'released' to 'detached' and reconnects via the existing reconnect path.
  */
 async function readoptReleasedSession(tmuxName: string, _projectId?: string): Promise<Session | null> {
@@ -1901,7 +1901,7 @@ async function readoptReleasedSession(tmuxName: string, _projectId?: string): Pr
   }
 
   // Detach all external clients (e.g. tilix) from the tmux session
-  // so they don't fight with OpenFlow's worker for input/output
+  // so they don't fight with HiveCommand's worker for input/output
   try {
     const { stdout } = await execFileAsync('tmux', [...tmuxBaseArgs, 'list-clients', '-t', tmuxName, '-F', '#{client_tty}'], { encoding: 'utf8' });
     const ttys = stdout.trim().split('\n').filter(Boolean);
@@ -1942,7 +1942,7 @@ async function readoptReleasedSession(tmuxName: string, _projectId?: string): Pr
  */
 export async function spawnAdopt(sessionId: string, socketPath: string, projectPath: string, task: string, cols: number, rows: number): Promise<void> {
   // Detach all existing dtach -a clients for this socket BEFORE we attach.
-  // This disconnects the user's real terminal so it doesn't fight with OpenFlow.
+  // This disconnects the user's real terminal so it doesn't fight with HiveCommand.
   // We use pkill to SIGHUP dtach clients matching the socket path.
   // SIGHUP on a dtach client causes a clean detach (the master stays alive).
   try {
@@ -1986,7 +1986,7 @@ export async function spawnAdopt(sessionId: string, socketPath: string, projectP
     data: { task, projectPath, externalSocket: socketPath, tmux: config.useTmux },
   });
 
-  pushSystemEvent(`[OpenFlow] Adopted external session ${sessionId}: ${task.slice(0, 60)}`);
+  pushSystemEvent(`[HiveCommand] Adopted external session ${sessionId}: ${task.slice(0, 60)}`);
 }
 
 function killOrphanedProcess(pid: number, sessionId: string): void {

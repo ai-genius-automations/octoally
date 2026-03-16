@@ -43,7 +43,7 @@ export function createTray(opts: TrayOptions): Tray {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip('OpenFlow');
+  tray.setToolTip('HiveCommand');
 
   // Build initial menu (async — will set when ready)
   refreshMenu(opts);
@@ -121,10 +121,10 @@ async function refreshMenu(opts: TrayOptions) {
       click: async () => {
         if (!isServiceInstalled()) {
           if (cliManaged) {
-            console.log('[OpenFlow] Stopping CLI-managed server on quit...');
+            console.log('[HiveCommand] Stopping CLI-managed server on quit...');
             await stopServer(opts.cliPath);
           } else if (reachable) {
-            console.log('[OpenFlow] Stopping external server on quit...');
+            console.log('[HiveCommand] Stopping external server on quit...');
             await stopServerOnPort();
           }
         }

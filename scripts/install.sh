@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenFlow Installer
+# HiveCommand Installer
 # Downloads a pre-built release, extracts it, and starts the server.
 #
 # Prerequisites:
@@ -7,22 +7,22 @@
 #   - Claude Code     npm install -g @anthropic-ai/claude-code
 #
 # IMPORTANT: You must run `claude` at least once and accept the terms before
-# installing OpenFlow. Sessions require non-interactive mode, so you must also
+# installing HiveCommand. Sessions require non-interactive mode, so you must also
 # run: claude --dangerously-skip-permissions
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/openflow/main/scripts/install.sh | bash
-#   OPENFLOW_VERSION=0.1.0 bash install.sh
-#   OPENFLOW_INSTALL_DIR=/opt/openflow bash install.sh
+#   curl -fsSL https://raw.githubusercontent.com/ai-genius-automations/hivecommand/main/scripts/install.sh | bash
+#   HIVECOMMAND_VERSION=0.1.0 bash install.sh
+#   HIVECOMMAND_INSTALL_DIR=/opt/hivecommand bash install.sh
 #
 # For private repos / pre-release testing:
-#   OPENFLOW_ARCHIVE_URL="https://example.com/openflow-v0.1.0.tar.gz" bash install.sh
+#   HIVECOMMAND_ARCHIVE_URL="https://example.com/hivecommand-v0.1.0.tar.gz" bash install.sh
 
 set -euo pipefail
 
-INSTALL_DIR="${OPENFLOW_INSTALL_DIR:-$HOME/openflow}"
-GITHUB_REPO="${OPENFLOW_GITHUB_REPO:-ai-genius-automations/openflow}"
-VERSION="${OPENFLOW_VERSION:-latest}"
+INSTALL_DIR="${HIVECOMMAND_INSTALL_DIR:-$HOME/hivecommand}"
+GITHUB_REPO="${HIVECOMMAND_GITHUB_REPO:-ai-genius-automations/hivecommand}"
+VERSION="${HIVECOMMAND_VERSION:-latest}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 # Build auth header array for curl (used for private repo access)
@@ -39,10 +39,10 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-log_info()  { echo -e "${CYAN}[OpenFlow]${NC} $1"; }
-log_ok()    { echo -e "${GREEN}[OpenFlow]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[OpenFlow]${NC} $1"; }
-log_error() { echo -e "${RED}[OpenFlow]${NC} $1"; }
+log_info()  { echo -e "${CYAN}[HiveCommand]${NC} $1"; }
+log_ok()    { echo -e "${GREEN}[HiveCommand]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[HiveCommand]${NC} $1"; }
+log_error() { echo -e "${RED}[HiveCommand]${NC} $1"; }
 log_step()  { echo -e "\n${BOLD}[$1/$TOTAL_STEPS] $2${NC}"; }
 
 TOTAL_STEPS=6
@@ -51,7 +51,7 @@ TOTAL_STEPS=6
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
   TARGET_USER="$SUDO_USER"
   TARGET_HOME=$(eval echo "~$SUDO_USER")
-  INSTALL_DIR="${OPENFLOW_INSTALL_DIR:-$TARGET_HOME/openflow}"
+  INSTALL_DIR="${HIVECOMMAND_INSTALL_DIR:-$TARGET_HOME/hivecommand}"
 elif [ "$(id -u)" -eq 0 ]; then
   TARGET_USER="root"
   TARGET_HOME="$HOME"
@@ -163,7 +163,7 @@ if ! command -v claude &>/dev/null; then
 fi
 
 # Check if Claude Code has been run with --dangerously-skip-permissions
-# This is required for OpenFlow to run non-interactive agent sessions.
+# This is required for HiveCommand to run non-interactive agent sessions.
 # The flag creates a config entry that persists — only needs to be run once.
 CLAUDE_CONFIG_DIR="${HOME}/.claude"
 if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
@@ -181,7 +181,7 @@ fi
 if [ "$CLAUDE_INITIALIZED" = false ]; then
   log_warn "Claude Code has not been initialized yet."
   echo ""
-  echo "  OpenFlow requires Claude Code to be set up with non-interactive permissions."
+  echo "  HiveCommand requires Claude Code to be set up with non-interactive permissions."
   echo "  You need to run these commands (as your user, not root):"
   echo ""
   echo "    1. claude                              # Accept terms & sign in"
@@ -242,11 +242,50 @@ NODE_VER="$(node -v 2>/dev/null || echo 'not found')"
 CLAUDE_VER="$(claude --version 2>/dev/null || echo 'ok')"
 log_ok "Prerequisites met (Node ${NODE_VER}, Claude Code ${CLAUDE_VER})"
 
+# --- Migrate from OpenFlow (if upgrading) ------------------------------------
+
+OLD_CONFIG_DIR="$TARGET_HOME/.openflow"
+NEW_CONFIG_DIR="$TARGET_HOME/.hivecommand"
+
+if [ -d "$OLD_CONFIG_DIR" ] && [ ! -d "$NEW_CONFIG_DIR" ]; then
+  log_info "Migrating config directory: ~/.openflow → ~/.hivecommand"
+  mv "$OLD_CONFIG_DIR" "$NEW_CONFIG_DIR"
+fi
+
+if [ -d "$NEW_CONFIG_DIR" ] && [ -f "$NEW_CONFIG_DIR/openflow.db" ] && [ ! -f "$NEW_CONFIG_DIR/hivecommand.db" ]; then
+  log_info "Migrating database: openflow.db → hivecommand.db"
+  mv "$NEW_CONFIG_DIR/openflow.db" "$NEW_CONFIG_DIR/hivecommand.db"
+  [ -f "$NEW_CONFIG_DIR/openflow.db-wal" ] && mv "$NEW_CONFIG_DIR/openflow.db-wal" "$NEW_CONFIG_DIR/hivecommand.db-wal"
+  [ -f "$NEW_CONFIG_DIR/openflow.db-shm" ] && mv "$NEW_CONFIG_DIR/openflow.db-shm" "$NEW_CONFIG_DIR/hivecommand.db-shm"
+fi
+
+# Remove old OpenFlow binaries and service files
+if [ -L "/usr/local/bin/openflow" ] || [ -f "/usr/local/bin/openflow" ]; then
+  log_info "Removing old CLI: /usr/local/bin/openflow"
+  $SUDO rm -f "/usr/local/bin/openflow"
+fi
+if [ -L "$TARGET_HOME/.local/bin/openflow" ] || [ -f "$TARGET_HOME/.local/bin/openflow" ]; then
+  rm -f "$TARGET_HOME/.local/bin/openflow"
+fi
+if [ -f "/etc/systemd/system/openflow.service" ]; then
+  log_info "Removing old systemd service: openflow.service"
+  $SUDO systemctl stop openflow 2>/dev/null || true
+  $SUDO systemctl disable openflow 2>/dev/null || true
+  $SUDO rm -f "/etc/systemd/system/openflow.service"
+  $SUDO systemctl daemon-reload 2>/dev/null || true
+fi
+if launchctl list com.aigenius.openflow &>/dev/null 2>&1; then
+  log_info "Removing old launchd service: com.aigenius.openflow"
+  launchctl stop com.aigenius.openflow 2>/dev/null || true
+  launchctl unload "$TARGET_HOME/Library/LaunchAgents/com.aigenius.openflow.plist" 2>/dev/null || true
+  rm -f "$TARGET_HOME/Library/LaunchAgents/com.aigenius.openflow.plist"
+fi
+
 # --- Step 2: Download release ------------------------------------------------
 
-log_step 2 "Downloading OpenFlow..."
+log_step 2 "Downloading HiveCommand..."
 
-ARCHIVE_URL="${OPENFLOW_ARCHIVE_URL:-}"
+ARCHIVE_URL="${HIVECOMMAND_ARCHIVE_URL:-}"
 
 if [ -z "$ARCHIVE_URL" ]; then
   # Resolve version from GitHub Releases API
@@ -260,7 +299,7 @@ if [ -z "$ARCHIVE_URL" ]; then
         })' 2>/dev/null || echo "")
     fi
     if [ -z "$RELEASE_INFO" ]; then
-      log_error "No releases found. Set OPENFLOW_ARCHIVE_URL to install from a direct URL."
+      log_error "No releases found. Set HIVECOMMAND_ARCHIVE_URL to install from a direct URL."
       exit 1
     fi
     VERSION=$(echo "$RELEASE_INFO" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).tag_name.replace(/^v/,""))}catch{process.exit(1)}})' 2>/dev/null)
@@ -280,7 +319,7 @@ if [ -z "$ARCHIVE_URL" ]; then
   fi
 
   if [ -z "$ARCHIVE_URL" ]; then
-    ARCHIVE_URL="https://github.com/$GITHUB_REPO/releases/download/v${VERSION}/openflow-v${VERSION}.tar.gz"
+    ARCHIVE_URL="https://github.com/$GITHUB_REPO/releases/download/v${VERSION}/hivecommand-v${VERSION}.tar.gz"
   fi
 fi
 
@@ -299,8 +338,8 @@ log_ok "Downloaded ($(du -h "$TMPFILE" | cut -f1))"
 log_step 3 "Installing to $INSTALL_DIR..."
 
 # Stop existing server if running
-if [ -f "$INSTALL_DIR/.openflow.pid" ]; then
-  local_pid=$(cat "$INSTALL_DIR/.openflow.pid" 2>/dev/null || echo "")
+if [ -f "$INSTALL_DIR/.hivecommand.pid" ]; then
+  local_pid=$(cat "$INSTALL_DIR/.hivecommand.pid" 2>/dev/null || echo "")
   if [ -n "$local_pid" ] && kill -0 "$local_pid" 2>/dev/null; then
     log_info "Stopping existing server..."
     kill "$local_pid" 2>/dev/null || true
@@ -313,16 +352,16 @@ EXTRACT_DIR=$(mktemp -d)
 tar xzf "$TMPFILE" -C "$EXTRACT_DIR"
 rm -f "$TMPFILE"
 
-EXTRACTED=$(ls -d "$EXTRACT_DIR"/openflow-* 2>/dev/null | head -1)
+EXTRACTED=$(ls -d "$EXTRACT_DIR"/hivecommand-* 2>/dev/null | head -1)
 if [ -z "$EXTRACTED" ] || [ ! -d "$EXTRACTED" ]; then
-  log_error "Archive does not contain expected openflow-vX.Y.Z directory"
+  log_error "Archive does not contain expected hivecommand-vX.Y.Z directory"
   rm -rf "$EXTRACT_DIR"
   exit 1
 fi
 
 # Preserve user data from existing install
 if [ -d "$INSTALL_DIR" ]; then
-  for keep in logs .openflow .openflow.pid; do
+  for keep in logs .hivecommand .hivecommand.pid; do
     [ -e "$INSTALL_DIR/$keep" ] && cp -r "$INSTALL_DIR/$keep" "$EXTRACT_DIR/_keep_$keep" 2>/dev/null || true
   done
   rm -rf "$INSTALL_DIR"
@@ -330,7 +369,7 @@ fi
 
 mv "$EXTRACTED" "$INSTALL_DIR"
 
-for keep in logs .openflow .openflow.pid; do
+for keep in logs .hivecommand .hivecommand.pid; do
   [ -e "$EXTRACT_DIR/_keep_$keep" ] && mv "$EXTRACT_DIR/_keep_$keep" "$INSTALL_DIR/$keep" 2>/dev/null || true
 done
 rm -rf "$EXTRACT_DIR"
@@ -346,24 +385,24 @@ fi
 log_info "Installing server dependencies..."
 npm ci --omit=dev --prefix "$INSTALL_DIR/server" 2>&1 | tail -3
 
-log_ok "OpenFlow v${VERSION} installed to $INSTALL_DIR"
+log_ok "HiveCommand v${VERSION} installed to $INSTALL_DIR"
 
 # --- Step 4: Install CLI -----------------------------------------------------
 
 log_step 4 "Installing CLI..."
 
-chmod +x "$INSTALL_DIR/bin/openflow"
+chmod +x "$INSTALL_DIR/bin/hivecommand"
 
 LINK_DIR="/usr/local/bin"
 if [ ! -w "$LINK_DIR" ]; then
   # Try with sudo
-  if $SUDO ln -sf "$INSTALL_DIR/bin/openflow" "$LINK_DIR/openflow" 2>/dev/null; then
+  if $SUDO ln -sf "$INSTALL_DIR/bin/hivecommand" "$LINK_DIR/hivecommand" 2>/dev/null; then
     : # success — symlinked to /usr/local/bin
   else
     # Fallback to ~/.local/bin and ensure it's in PATH
     LINK_DIR="$TARGET_HOME/.local/bin"
     mkdir -p "$LINK_DIR"
-    ln -sf "$INSTALL_DIR/bin/openflow" "$LINK_DIR/openflow"
+    ln -sf "$INSTALL_DIR/bin/hivecommand" "$LINK_DIR/hivecommand"
 
     # Add to PATH if not already there
     if ! echo "$PATH" | tr ':' '\n' | grep -qx "$LINK_DIR"; then
@@ -385,7 +424,7 @@ if [ ! -w "$LINK_DIR" ]; then
     fi
   fi
 else
-  ln -sf "$INSTALL_DIR/bin/openflow" "$LINK_DIR/openflow"
+  ln -sf "$INSTALL_DIR/bin/hivecommand" "$LINK_DIR/hivecommand"
 fi
 
 # Fix ownership if running as root for another user
@@ -394,11 +433,11 @@ if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
   chown -R "$TARGET_USER:$TARGET_USER" "$INSTALL_DIR"
 fi
 
-log_ok "CLI: $LINK_DIR/openflow"
+log_ok "CLI: $LINK_DIR/hivecommand"
 
 # --- Step 5: Start server ----------------------------------------------------
 
-log_step 5 "Starting OpenFlow..."
+log_step 5 "Starting HiveCommand..."
 
 # Remove legacy Tauri desktop app if installed
 if command -v dpkg &>/dev/null && dpkg -l open-flow &>/dev/null 2>&1; then
@@ -408,9 +447,9 @@ fi
 
 # Start (as target user if we're root)
 if [ "$(id -u)" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
-  su - "$TARGET_USER" -c "PATH=\"$LINK_DIR:\$PATH\" openflow start"
+  su - "$TARGET_USER" -c "PATH=\"$LINK_DIR:\$PATH\" hivecommand start"
 else
-  "$LINK_DIR/openflow" start
+  "$LINK_DIR/hivecommand" start
 fi
 
 # --- Step 6: Desktop app (optional) ------------------------------------------
@@ -418,20 +457,20 @@ fi
 log_step 6 "Desktop app..."
 
 # Determine what desktop file we'd look for on this OS
-DESKTOP_URL="${OPENFLOW_DESKTOP_URL:-}"
+DESKTOP_URL="${HIVECOMMAND_DESKTOP_URL:-}"
 DESKTOP_FILE=""
 DESKTOP_SUPPORTED=true
 
 case "$OS" in
   Linux*)
-    DESKTOP_FILE="openflow-desktop_${VERSION}_amd64.deb"
+    DESKTOP_FILE="hivecommand-desktop_${VERSION}_amd64.deb"
     ;;
   Darwin*)
     ARCH="$(uname -m)"
     if [ "$ARCH" = "arm64" ]; then
-      DESKTOP_FILE="OpenFlow-${VERSION}-arm64.dmg"
+      DESKTOP_FILE="HiveCommand-${VERSION}-arm64.dmg"
     else
-      DESKTOP_FILE="OpenFlow-${VERSION}.dmg"
+      DESKTOP_FILE="HiveCommand-${VERSION}.dmg"
     fi
     ;;
   *)
@@ -494,16 +533,16 @@ install_desktop_app() {
       log_info "Installing desktop app (.deb)..."
       $SUDO dpkg -i "$TMPDESKTOP" 2>&1 || $SUDO apt-get install -f -y -qq 2>&1
       rm -f "$TMPDESKTOP"
-      log_ok "Desktop app installed (launch from app menu or run: openflow-desktop)"
+      log_ok "Desktop app installed (launch from app menu or run: hivecommand-desktop)"
       ;;
     Darwin*)
       log_info "Mounting DMG..."
       local MOUNT_DIR
       MOUNT_DIR=$(hdiutil attach "$TMPDESKTOP" -nobrowse -quiet | tail -1 | awk '{print $NF}')
       if [ -d "$MOUNT_DIR" ]; then
-        cp -R "$MOUNT_DIR"/OpenFlow.app /Applications/ 2>/dev/null || true
+        cp -R "$MOUNT_DIR"/HiveCommand.app /Applications/ 2>/dev/null || true
         hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
-        log_ok "Desktop app installed to /Applications/OpenFlow.app"
+        log_ok "Desktop app installed to /Applications/HiveCommand.app"
       else
         log_warn "Failed to mount DMG — install manually from GitHub Releases"
       fi
@@ -519,7 +558,7 @@ elif [ "$DESKTOP_AVAILABLE" = false ]; then
 elif [ -e /dev/tty ]; then
   # Interactive — prompt (works even when piped: curl | bash)
   echo ""
-  echo -n "Install the OpenFlow desktop app? [y/N]: "
+  echo -n "Install the HiveCommand desktop app? [y/N]: "
   read -r answer < /dev/tty 2>/dev/null || answer="n"
   case "$answer" in
     [yY]|[yY][eE][sS])
@@ -536,16 +575,16 @@ fi
 # --- Done --------------------------------------------------------------------
 
 echo ""
-echo -e "${GREEN}${BOLD}OpenFlow v${VERSION} installed and running!${NC}"
+echo -e "${GREEN}${BOLD}HiveCommand v${VERSION} installed and running!${NC}"
 echo ""
 echo "  Dashboard:  http://localhost:42010"
-echo "  CLI:        $LINK_DIR/openflow"
+echo "  CLI:        $LINK_DIR/hivecommand"
 echo "  Install:    $INSTALL_DIR"
 echo ""
 echo "Commands:"
-echo "  openflow status            # Check status"
-echo "  openflow stop              # Stop the server"
-echo "  openflow start             # Start the server"
-echo "  openflow update            # Update to latest release"
-echo "  openflow install-service   # Auto-start on boot"
+echo "  hivecommand status            # Check status"
+echo "  hivecommand stop              # Stop the server"
+echo "  hivecommand start             # Start the server"
+echo "  hivecommand update            # Update to latest release"
+echo "  hivecommand install-service   # Auto-start on boot"
 echo ""

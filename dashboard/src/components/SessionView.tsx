@@ -36,7 +36,7 @@ interface PersistedState {
 let nextExplorerSeq = 1;
 
 function storageKey(sessionId: string) {
-  return `openflow-session-${sessionId}`;
+  return `hivecommand-session-${sessionId}`;
 }
 
 function loadPersistedState(sessionId: string): PersistedState | null {
@@ -66,7 +66,7 @@ export function cleanupSessionStorage(sessionId: string) {
       // Clean up each explorer instance's persisted state
       if (parsed?.explorerInstances) {
         for (const inst of parsed.explorerInstances) {
-          localStorage.removeItem(`openflow-explorer-${inst.id}`);
+          localStorage.removeItem(`hivecommand-explorer-${inst.id}`);
         }
       }
     }

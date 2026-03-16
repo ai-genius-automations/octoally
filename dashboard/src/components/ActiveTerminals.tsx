@@ -22,7 +22,7 @@ interface ExpandedSession {
   projectId: string | null;
 }
 
-const COLUMNS_KEY = 'openflow-active-terminals-cols';
+const COLUMNS_KEY = 'hivecommand-active-terminals-cols';
 
 export function ActiveTerminals({ onBack, onGoToSession }: ActiveTerminalsProps) {
   const queryClient = useQueryClient();

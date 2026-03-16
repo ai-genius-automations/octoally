@@ -78,7 +78,7 @@ export function cueWakeActivate() {
 // Enable/disable setting (persisted in localStorage)
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = 'openflow-audio-cues';
+const STORAGE_KEY = 'hivecommand-audio-cues';
 let audioCuesEnabled = loadSetting();
 
 function loadSetting(): boolean {
