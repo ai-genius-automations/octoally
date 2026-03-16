@@ -249,10 +249,21 @@ async function start() {
     await app.register(fastifyStatic, {
       root: dashboardPath,
       prefix: '/',
+      cacheControl: false,
+    });
+
+    // No-cache for index.html so Electron always picks up new builds
+    app.addHook('onSend', async (_req, reply, payload) => {
+      const ct = reply.getHeader('content-type');
+      if (typeof ct === 'string' && ct.includes('text/html')) {
+        reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+      return payload;
     });
 
     // SPA fallback
     app.setNotFoundHandler(async (_req, reply) => {
+      reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
       return reply.sendFile('index.html');
     });
   }

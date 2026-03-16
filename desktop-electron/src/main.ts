@@ -8,8 +8,7 @@ let mainWindow: BrowserWindow | null = null;
 const cliPath = resolveCliPath();
 
 function createWindow() {
-  // Remove default menu bar (File/Edit/View/Window/Help)
-  Menu.setApplicationMenu(null);
+  // Keep default menu bar for View > Reload and DevTools access
 
   mainWindow = new BrowserWindow({
     width: 1400,

@@ -1804,18 +1804,23 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
   } catch { /* /tmp read failed */ }
 
   // Also discover released HiveCommand tmux sessions (popped-out sessions)
+  // Collect socket paths already found by dtach scan to avoid duplicates
+  const foundSockets = new Set(results.map(r => r.socketPath));
   try {
     const db = getDb();
     const releasedSessions = db.prepare(`
-      SELECT s.id, s.task, s.created_at, s.project_id, COALESCE(p.path, '') as project_path
+      SELECT s.id, s.task, s.created_at, s.project_id, s.external_socket, COALESCE(p.path, '') as project_path
       FROM sessions s
       LEFT JOIN projects p ON s.project_id = p.id
       WHERE s.status = 'released'
-    `).all() as Array<{ id: string; task: string; created_at: string; project_id: string; project_path: string }>;
+    `).all() as Array<{ id: string; task: string; created_at: string; project_id: string; external_socket: string | null; project_path: string }>;
 
     for (const s of releasedSessions) {
       // Skip if already tracked in activeSessions
       if (activeSessions.has(s.id)) continue;
+
+      // Skip if this session's external dtach socket was already found by the dtach scan
+      if (s.external_socket && foundSockets.has(s.external_socket)) continue;
 
       // Verify the tmux session is still alive
       const tmuxName = tmuxSessionName(s.id);
@@ -1855,6 +1860,17 @@ export async function adoptDtachSession(socketPath: string, projectId?: string):
 
   const ownerChecks = await Promise.all(socketPids.map(p => isHiveCommandOwnedAsync(p)));
   if (ownerChecks.some(owned => owned)) return null;
+
+  // Check if there's a released session that previously used this socket
+  // (popped-out session being re-adopted). Reuse it instead of creating a duplicate.
+  const db0 = getDb();
+  const releasedRow = db0.prepare(
+    `SELECT id FROM sessions WHERE external_socket = ? AND status = 'released' LIMIT 1`
+  ).get(socketPath) as { id: string } | undefined;
+  if (releasedRow) {
+    const tmuxName = tmuxSessionName(releasedRow.id);
+    return readoptReleasedSession(tmuxName, projectId);
+  }
 
   const baseName = socketPath.replace('.sock', '');
   const infoPath = `${baseName}.info`;

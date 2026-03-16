@@ -437,18 +437,24 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     setShowLauncher(false);
   }
 
+  // Track when an adopt is in flight to suppress the hidden list during the race
+  const adoptingRef = useRef(false);
+
   // Compute hidden sessions (user hid the tab but process is still running)
   // Use all sessions (not projectSessions) because project_id filtering may not match
   // closedSessionIds is already scoped to this ProjectView instance
   const hiddenSessions = useMemo(() => {
     void closedIdsVersion; // depend on version counter so this recomputes when sessions are hidden/unhidden
+    // Suppress hidden list while adopt is in flight (avoids race with SSE-driven refetch)
+    if (adoptingRef.current) return [];
     if (closedSessionIds.current.size === 0) return [];
-    const allSessions = sessionsData?.sessions || [];
-    return allSessions.filter((s: any) =>
+    // Only show hidden sessions for this project, and exclude sessions with open tabs
+    const openTabIds = new Set(terminalInstances.map((t) => t.id));
+    return projectSessions.filter((s: any) =>
       closedSessionIds.current.has(s.id) &&
-      (s.status === 'running' || s.status === 'detached')
+      !openTabIds.has(s.id)
     );
-  }, [sessionsData, closedIdsVersion]);
+  }, [projectSessions, closedIdsVersion, terminalInstances]);
 
   function unhideSession(id: string) {
     closedSessionIds.current.delete(id);
@@ -525,9 +531,14 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
 
   async function handleAdoptSession(socketPath: string) {
     setShowAdoptMenu(false);
+    adoptingRef.current = true;
     try {
       const result = await api.sessions.adopt(socketPath, projectId);
       const sid = result.session.id;
+
+      // Clear from hidden sessions so it doesn't show up in the adopt dropdown
+      closedSessionIds.current.delete(sid);
+      setClosedIdsVersion((v) => v + 1);
 
       // Refresh sessions data so projectSessions includes the re-adopted session
       // (needed for hideCursor prop which enables the force-resize redraw trick)
@@ -552,6 +563,9 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
       }
     } catch (err) {
       console.error('Failed to adopt session:', err);
+    } finally {
+      adoptingRef.current = false;
+      setClosedIdsVersion((v) => v + 1); // force recompute now that adopt is done
     }
   }
 

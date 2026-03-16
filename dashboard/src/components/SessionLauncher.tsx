@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Project, type RufloAgent } from '../lib/api';
-import { Play, Loader2, Bot, TerminalSquare, Globe, Users, X, FolderOpen, GitBranch, Cpu, Activity, FileText, RefreshCw, Zap, Brain, Download } from 'lucide-react';
+import { Play, Loader2, Bot, TerminalSquare, Globe, Users, X, FolderOpen, GitBranch, Cpu, Activity, FileText, Zap, Brain, Download } from 'lucide-react';
 import { AgentGuideModal } from './AgentGuide';
 import { ConfirmModal } from './ConfirmModal';
 import { SessionMicButton } from './SessionMicButton';
@@ -251,7 +251,6 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
   });
   const agents = agentsData?.agents ?? [];
   const hasAgents = agents.length > 0;
-  const needsReinit = rufloInstalled && !hasAgents && agentsData !== undefined;
 
   // Check DevCortex status
   const { data: devcortexData } = useQuery({
@@ -399,30 +398,21 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {needsReinit && (
+              {rufloInstalled ? (
                 <button
                   onClick={handleReinit}
                   disabled={reinitPending || reinitMutation.isPending}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.3)' }}
-                  title="Reinitialize RuFlo with latest agents, skills, and commands"
+                  style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--success)', border: '1px solid rgba(34,197,94,0.3)' }}
+                  title="RuFlo is active — click to reinitialize"
                 >
                   {reinitPending || reinitMutation.isPending ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <RefreshCw className="w-3 h-3" />
+                    <Cpu className="w-3 h-3" />
                   )}
-                  Update RuFlo
-                </button>
-              )}
-              {rufloInstalled ? (
-                <span
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                  style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--success)' }}
-                >
-                  <Cpu className="w-3 h-3" />
                   RuFlo Active
-                </span>
+                </button>
               ) : (
                 <span
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
