@@ -303,24 +303,40 @@ patch_sona_service() {
 ensure_better_sqlite3() {
   local SHARED_RUFLO="$HOME/.hivecommand/ruflo"
 
-  # Check if already available somewhere
-  if [ -d "$PROJECT_PATH/node_modules/better-sqlite3" ]; then
-    skip "better-sqlite3 available in project"
+  # Check if already natively installed in the project
+  if [ -d "$PROJECT_PATH/node_modules/better-sqlite3" ] && [ ! -L "$PROJECT_PATH/node_modules/better-sqlite3" ]; then
+    skip "better-sqlite3 natively installed in project"
     return 0
   fi
 
-  if [ -d "$SHARED_RUFLO/node_modules/better-sqlite3" ]; then
-    skip "better-sqlite3 available in shared ruflo cache"
-    return 0
-  fi
-
-  # Install in shared location (doesn't pollute project)
-  log "Installing better-sqlite3 in shared ruflo cache..."
-  mkdir -p "$SHARED_RUFLO"
-  if npm install --prefix "$SHARED_RUFLO" better-sqlite3 --save-dev --silent 2>/dev/null; then
+  # Ensure it's installed in shared cache
+  if [ ! -d "$SHARED_RUFLO/node_modules/better-sqlite3" ]; then
+    log "Installing better-sqlite3 in shared ruflo cache..."
+    mkdir -p "$SHARED_RUFLO"
+    if ! npm install --prefix "$SHARED_RUFLO" better-sqlite3 --save-dev --silent 2>/dev/null; then
+      warn "Failed to install better-sqlite3 — SONA learning will use fallback"
+      return 1
+    fi
     success "better-sqlite3 installed in $SHARED_RUFLO"
+  fi
+
+  # Symlink into project so ESM `import` resolves (NODE_PATH doesn't work for ESM)
+  mkdir -p "$PROJECT_PATH/node_modules"
+  local DEPS=("better-sqlite3" "bindings" "file-uri-to-path")
+  local LINKED=0
+  for dep in "${DEPS[@]}"; do
+    local target="$SHARED_RUFLO/node_modules/$dep"
+    local link="$PROJECT_PATH/node_modules/$dep"
+    if [ -d "$target" ] && [ ! -e "$link" ]; then
+      ln -sf "$target" "$link"
+      LINKED=$((LINKED + 1))
+    fi
+  done
+
+  if [ $LINKED -gt 0 ]; then
+    success "Symlinked better-sqlite3 from shared cache ($LINKED deps)"
   else
-    warn "Failed to install better-sqlite3 — SONA learning will use fallback"
+    skip "better-sqlite3 already linked in project"
   fi
 }
 
