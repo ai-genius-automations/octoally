@@ -383,7 +383,7 @@ fi
 
 # Install server production dependencies (native modules compile on this platform)
 log_info "Installing server dependencies..."
-npm ci --omit=dev --prefix "$INSTALL_DIR/server" 2>&1 | tail -3
+npm install --omit=dev --prefix "$INSTALL_DIR/server" 2>&1 | tail -3
 
 log_ok "HiveCommand v${VERSION} installed to $INSTALL_DIR"
 
