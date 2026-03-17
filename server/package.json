@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "NODE_ENV=production node dist/index.js"
+    "start": "env NODE_ENV=production node dist/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

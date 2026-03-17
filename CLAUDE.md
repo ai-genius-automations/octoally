@@ -1,5 +1,62 @@
 # Claude Code Configuration - Claude Flow V3
 
+<!-- DEVCORTEX:START - Do not edit this section, it is managed by DevCortex -->
+## DevCortex Integration
+
+### Memory & Learning
+
+Both MCP tools and CLI commands use the same 384-dim HNSW vector backend. Use whichever is convenient.
+
+#### MCP Memory Tools
+
+| Tool | Required Params | Optional Params |
+|------|----------------|-----------------|
+| `mcp__claude-flow__memory_search` | `query` | `namespace`, `limit`, `threshold` |
+| `mcp__claude-flow__memory_store` | `key`, `value` | `namespace`, `tags`, `ttl` |
+| `mcp__claude-flow__memory_retrieve` | `key` | `namespace` |
+| `mcp__claude-flow__memory_list` | | `namespace`, `limit` |
+| `mcp__claude-flow__memory_delete` | `key` | `namespace` |
+
+#### CLI Memory Commands
+
+```bash
+ruflo memory search --query "auth patterns" --namespace patterns --limit 5
+ruflo memory store --key "pattern/name" --value "what you learned" --namespace patterns
+ruflo memory retrieve --key "pattern/name" --namespace patterns
+ruflo memory list --namespace patterns --limit 10
+ruflo memory delete --key "pattern/name" --namespace patterns
+```
+
+**Namespaces:** `patterns`, `warnings`, `architecture`, `bugs`, `frontend`, `backend`, `database`
+
+---
+
+### Commit Policy
+
+**DO NOT auto-commit.** Only commit when the user explicitly requests it.
+
+### DevCortex MCP Tools
+
+- `log_from_task` - Brief task summaries (after commits/small tasks)
+- `log_entry` - Detailed documentation (research/analysis)
+- `get_dev_context` - Get context before implementing
+- `search_all` - Search logs and decisions
+- `review_logs` - See logs needing verification
+- `debate_start` - Start Claude vs GPT debate (requires 'aigdebate' keyword)
+- `debate_continue` - Continue debate with revised proposal
+
+### Debate Protocol
+
+When running debates with `debate_start`:
+- **ALWAYS continue automatically** until `consensus_reached: true` OR `current_round >= max_rounds`
+- **NEVER stop to ask the user** mid-debate
+- **NEVER present intermediate results** - only present the final outcome
+- After each GPT response where `consensus_reached: false`, IMMEDIATELY call `debate_continue` with a revised proposal addressing GPT's feedback
+- Only return to the user when the debate is complete (consensus reached or max rounds exhausted)
+- Present a clear summary of the final decision and key points from both sides
+<!-- DEVCORTEX:END -->
+
+
 ## Behavioral Rules (Always Enforced)
 
 - Do what has been asked; nothing more, nothing less
