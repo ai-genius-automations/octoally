@@ -259,7 +259,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
           if (text) {
             const w = wsRef.current;
             if (w && w.readyState === WebSocket.OPEN) {
-              w.send(JSON.stringify({ type: 'input', data: text }));
+              w.send(JSON.stringify({ type: 'input', data: text, paste: true }));
             }
           }
         }).catch(() => {});
@@ -279,7 +279,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       const text = ce.clipboardData?.getData('text');
       const w = wsRef.current;
       if (text && w && w.readyState === WebSocket.OPEN) {
-        w.send(JSON.stringify({ type: 'input', data: text }));
+        w.send(JSON.stringify({ type: 'input', data: text, paste: true }));
         ce.preventDefault();
         ce.stopImmediatePropagation();
       }

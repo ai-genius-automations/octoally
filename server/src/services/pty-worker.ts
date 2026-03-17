@@ -66,7 +66,7 @@ type ParentMessage =
   | SpawnMessage
   | ReconnectMessage
   | AdoptMessage
-  | { type: 'input'; data: string }
+  | { type: 'input'; data: string; bracketedPaste?: boolean }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'capture' }
   | { type: 'kill' }
@@ -525,10 +525,17 @@ async function handleAdopt(msg: AdoptMessage): Promise<void> {
   }
 }
 
-function handleInput(data: string): void {
+function handleInput(data: string, isBracketedPaste = false): void {
   if (!ptyProcess) return;
   const cleaned = data.replace(TERMINAL_RESPONSE_RE, '');
-  if (cleaned) ptyProcess.write(cleaned);
+  if (!cleaned) return;
+  if (isBracketedPaste) {
+    // Wrap in bracketed paste escape sequences so the shell/readline treats
+    // the entire block as pasted text rather than executing each line
+    ptyProcess.write(`\x1b[200~${cleaned}\x1b[201~`);
+  } else {
+    ptyProcess.write(cleaned);
+  }
 }
 
 function handleResize(cols: number, rows: number): void {
@@ -648,7 +655,7 @@ process.on('message', async (msg: ParentMessage) => {
       await handleAdopt(msg as AdoptMessage);
       break;
     case 'input':
-      handleInput(msg.data);
+      handleInput(msg.data, msg.bracketedPaste);
       break;
     case 'resize':
       handleResize(msg.cols, msg.rows);

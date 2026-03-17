@@ -1112,11 +1112,11 @@ export function requestCapture(sessionId: string, ws: WebSocket): Promise<void> 
   });
 }
 
-export function writeToSession(sessionId: string, data: string): boolean {
+export function writeToSession(sessionId: string, data: string, bracketedPaste?: boolean): boolean {
   const active = activeSessions.get(sessionId);
   if (!active) return false;
   // Send input to the worker process via IPC
-  active.worker.send({ type: 'input', data });
+  active.worker.send({ type: 'input', data, bracketedPaste });
   return true;
 }
 

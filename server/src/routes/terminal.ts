@@ -76,7 +76,7 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
           if (spawned) {
             switch (msg.type) {
               case 'input':
-                writeToSession(sessionId, msg.data);
+                writeToSession(sessionId, msg.data, msg.paste);
                 break;
               case 'resize':
                 resizeSession(sessionId, msg.cols, msg.rows);
@@ -125,7 +125,7 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
         socket.on('message', (raw: Buffer | string) => {
           try {
             const msg = JSON.parse(raw.toString());
-            if (msg.type === 'input') writeToSession(sessionId, msg.data);
+            if (msg.type === 'input') writeToSession(sessionId, msg.data, msg.paste);
           } catch { /* ignore */ }
         });
         socket.send(JSON.stringify({ type: 'connected', sessionId }));
@@ -155,7 +155,7 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
 
           switch (msg.type) {
             case 'input':
-              writeToSession(sessionId, msg.data);
+              writeToSession(sessionId, msg.data, msg.paste);
               break;
 
             case 'resize':
