@@ -701,6 +701,15 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     }
   }
 
+  // Focus a terminal's xterm textarea after switching views
+  function focusTerminalById(sessionId: string) {
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('hivecommand:focus-terminal', {
+        detail: { sessionId },
+      }));
+    }, 100);
+  }
+
   function handleWebPageCreated(url: string) {
     addWebPage(url);
   }
@@ -880,6 +889,8 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                           setActiveWebPageId(null);
                           setShowLauncher(false);
                           setShowAllTerminals(false);
+                          // Focus the terminal after switching from grid to single view
+                          focusTerminalById(inst.id);
                         }}
                         className="flex items-center gap-1.5 pl-3 pr-1 py-1 text-xs font-medium transition-colors"
                         style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
@@ -1399,6 +1410,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                                   setActiveTerminalId(term.id);
                                   setShowAllTerminals(false);
                                   setExpandedTerminalId(null);
+                                  focusTerminalById(term.id);
                                 }}
                                 className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors"
                                 style={{ background: 'var(--accent)', color: 'white' }}
@@ -1431,6 +1443,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                                 onClick={() => {
                                   setActiveTerminalId(term.id);
                                   setShowAllTerminals(false);
+                                  focusTerminalById(term.id);
                                 }}
                                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors hover:opacity-100 opacity-70"
                                 style={{ background: 'var(--accent)', color: 'white' }}

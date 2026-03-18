@@ -698,6 +698,21 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     return () => window.removeEventListener('hivecommand:refresh-terminal', handler);
   }, [sessionId]);
 
+  // Focus terminal on demand (e.g. switching from grid to single view)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { sessionId: targetId } = (e as CustomEvent).detail;
+      if (targetId !== sessionId) return;
+      const term = termRef.current;
+      if (term) {
+        term.scrollToBottom();
+        term.focus();
+      }
+    };
+    window.addEventListener('hivecommand:focus-terminal', handler);
+    return () => window.removeEventListener('hivecommand:focus-terminal', handler);
+  }, [sessionId]);
+
   return (
     <div className="h-full relative group/terminal" onClick={() => termRef.current?.focus()}>
       <div className="absolute top-2 right-5 z-10 flex items-center gap-2">
