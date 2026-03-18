@@ -1,6 +1,6 @@
 {
   "name": "@hivecommand/server",
-  "version": "0.1.36-alpha",
+  "version": "0.1.37-alpha",
   "description": "HiveCommand backend server — Fastify + SQLite + WebSocket",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
