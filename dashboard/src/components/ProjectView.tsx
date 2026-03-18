@@ -415,10 +415,12 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     // Regular session ID focus
     if (terminalInstances.some((t) => t.id === focusSessionId)) {
       setActiveTerminalId(focusSessionId);
+      setActiveWebPageId(null);
       setShowLauncher(false);
       setShowAllTerminals(false);
       setActiveMode('terminal');
       onFocusSessionHandled?.();
+      focusTerminalById(focusSessionId);
     }
   }, [focusSessionId, terminalInstances]);
 
