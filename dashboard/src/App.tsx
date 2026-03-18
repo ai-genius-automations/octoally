@@ -508,7 +508,7 @@ function Dashboard() {
       {/* Update confirmation modal */}
       {showUpdateConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
-          <div className="rounded-lg shadow-xl max-w-md w-full mx-4 p-5" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+          <div className="rounded-xl shadow-2xl max-w-md w-full mx-4 p-5" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
             <div className="flex items-start gap-3 mb-4">
               <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" style={{ color: '#facc15' }} />
               <div>
