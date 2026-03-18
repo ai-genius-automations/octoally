@@ -124,20 +124,13 @@ export function ActiveTerminals({ onBack, onGoToSession }: ActiveTerminalsProps)
 
   const jumpToSession = useCallback((sessionId: string) => {
     setJumpOpen(false);
+    setFocusedSessionId(sessionId);
     const card = cardRefs.current.get(sessionId);
     if (card && scrollContainerRef.current) {
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // After scroll, flash highlight and focus the terminal inside the card
       setTimeout(() => {
-        card.style.outline = '2px solid var(--accent)';
-        card.style.outlineOffset = '2px';
-        setTimeout(() => {
-          card.style.outline = '';
-          card.style.outlineOffset = '';
-        }, 1500);
-        // Focus the xterm canvas inside this card
-        const canvas = card.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
-        canvas?.focus();
+        const textarea = card.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
+        textarea?.focus({ preventScroll: true });
       }, 400);
     }
   }, []);
