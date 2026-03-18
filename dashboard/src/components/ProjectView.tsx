@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Monitor, FolderTree, Code2, GitBranch, Plus, X, Download, LayoutGrid, Maximize2, Minimize2, ExternalLink, Globe, Zap, Bot, TerminalSquare } from 'lucide-react';
+import { Monitor, FolderTree, Code2, GitBranch, Home, Plus, X, Download, LayoutGrid, Maximize2, Minimize2, ExternalLink, Globe, Zap, Bot, TerminalSquare } from 'lucide-react';
 import { Terminal } from './Terminal';
 import { FileExplorer } from './FileExplorer';
 import { GitPanel } from './GitPanel';
@@ -275,12 +275,12 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
   }, [projectSessions]);
 
   // If terminals appeared and launcher was showing, switch to terminal
+  // (but not if the user explicitly navigated to the Home/launcher tab)
   useEffect(() => {
-    if (terminalInstances.length > 0 && !activeTerminalId && !activeWebPageId) {
+    if (terminalInstances.length > 0 && !activeTerminalId && !activeWebPageId && !showLauncher) {
       setActiveTerminalId(terminalInstances[0].id);
-      setShowLauncher(false);
     }
-  }, [terminalInstances, activeTerminalId, activeWebPageId]);
+  }, [terminalInstances, activeTerminalId, activeWebPageId, showLauncher]);
 
   // Focus a specific session when requested (e.g. from Active Sessions "go to" button or voice command)
   useEffect(() => {
@@ -776,6 +776,19 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
           >
             {activeMode === 'terminal' && (
               <>
+                {/* Home tab — always first */}
+                <button
+                  onClick={() => { setShowLauncher(true); setShowAllTerminals(false); setActiveWebPageId(null); }}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-md shrink-0 transition-colors text-xs font-medium"
+                  style={{
+                    color: showLauncher ? 'var(--accent)' : 'var(--text-secondary)',
+                    background: showLauncher ? 'var(--bg-tertiary)' : 'transparent',
+                  }}
+                >
+                  <Home className="w-3 h-3" />
+                  Home
+                </button>
+
                 {/* Terminal session sub-tabs */}
                 {terminalInstances.map((inst) => {
                   const isActive = !showLauncher && !showAllTerminals && !activeWebPageId && inst.id === activeTerminalId;
@@ -842,21 +855,6 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                     <span>All</span>
                   </button>
                 )}
-
-                {/* New Session "+" button */}
-                <button
-                  onClick={() => { setShowLauncher(true); setShowAllTerminals(false); setActiveWebPageId(null); }}
-                  className="flex items-center justify-center rounded-md shrink-0 transition-colors"
-                  title="New Session"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    color: showLauncher ? 'var(--accent)' : 'var(--text-secondary)',
-                    background: showLauncher ? 'var(--bg-tertiary)' : 'transparent',
-                  }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
 
                 {/* Adopt external session button — on-demand scan */}
                 <div ref={adoptMenuRef}>
