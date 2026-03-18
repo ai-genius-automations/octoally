@@ -337,15 +337,30 @@ log_ok "Downloaded ($(du -h "$TMPFILE" | cut -f1))"
 
 log_step 3 "Installing to $INSTALL_DIR..."
 
-# Stop existing server if running
+# Stop existing server if running — try PID file first, then CLI, then pkill
 if [ -f "$INSTALL_DIR/.hivecommand.pid" ]; then
   local_pid=$(cat "$INSTALL_DIR/.hivecommand.pid" 2>/dev/null || echo "")
   if [ -n "$local_pid" ] && kill -0 "$local_pid" 2>/dev/null; then
-    log_info "Stopping existing server..."
+    log_info "Stopping existing server (PID $local_pid)..."
     kill "$local_pid" 2>/dev/null || true
     sleep 1
+    # Force kill if still running
+    kill -0 "$local_pid" 2>/dev/null && kill -9 "$local_pid" 2>/dev/null || true
   fi
 fi
+# Fallback: use CLI stop if available
+if command -v hivecommand &>/dev/null; then
+  hivecommand stop 2>/dev/null || true
+fi
+# Fallback: kill any remaining server process on our port
+if command -v fuser &>/dev/null; then
+  fuser -k 42010/tcp 2>/dev/null || true
+fi
+
+# Kill running desktop app so the package update doesn't conflict
+pkill -f hivecommand-desktop 2>/dev/null || true
+pkill -f "HiveCommand" 2>/dev/null && log_info "Stopped running desktop app" || true
+sleep 1
 
 # Extract
 EXTRACT_DIR=$(mktemp -d)
