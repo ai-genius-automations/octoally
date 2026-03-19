@@ -81,6 +81,16 @@ function Dashboard() {
     for (const ids of hiddenSessionIdsRef.current.values()) all.push(...ids);
     setHiddenSessionIds(all);
   }, []);
+  // Stable per-project callbacks to avoid inline arrow re-creation on every render
+  const hiddenSessionsCallbacksRef = useRef<Map<string, (ids: string[]) => void>>(new Map());
+  const getHiddenSessionsCallback = useCallback((projectId: string) => {
+    let cb = hiddenSessionsCallbacksRef.current.get(projectId);
+    if (!cb) {
+      cb = (ids: string[]) => handleHiddenSessionsChange(projectId, ids);
+      hiddenSessionsCallbacksRef.current.set(projectId, cb);
+    }
+    return cb;
+  }, [handleHiddenSessionsChange]);
 
   const queryClient = useQueryClient();
 
@@ -643,7 +653,7 @@ function Dashboard() {
                   terminalsSuspended={showActiveTerminals}
                   focusSessionId={isActive ? focusSessionId : null}
                   onFocusSessionHandled={() => setFocusSessionId(null)}
-                  onHiddenSessionsChange={(ids) => handleHiddenSessionsChange(tab.projectId, ids)}
+                  onHiddenSessionsChange={getHiddenSessionsCallback(tab.projectId)}
                 />
               )}
             </div>
