@@ -367,6 +367,144 @@ ensure_better_sqlite3() {
 }
 
 # =============================================================================
+# Part 4: Patch intelligence.cjs to read SONA HNSW patterns during init
+# =============================================================================
+INTEL_SENTINEL="// SONA_READ_PATH_v1"
+
+patch_intelligence_read() {
+  local INTEL_FILE="$PROJECT_PATH/.claude/helpers/intelligence.cjs"
+
+  if [ ! -f "$INTEL_FILE" ]; then
+    warn "intelligence.cjs not found — skipping read-path patch"
+    return 1
+  fi
+
+  if [ ! -f "$LEARNING_SERVICE" ]; then
+    warn "learning-service.mjs not found — skipping read-path patch"
+    return 1
+  fi
+
+  # Already patched?
+  if grep -q "$INTEL_SENTINEL" "$INTEL_FILE" 2>/dev/null; then
+    skip "intelligence.cjs already has SONA read path"
+    return 0
+  fi
+
+  # Back up original
+  cp "$INTEL_FILE" "${INTEL_FILE}.pre-sona-read"
+
+  local tempfile="${INTEL_FILE}.tmp"
+
+  node -e "
+    const fs = require('fs');
+    let content = fs.readFileSync('$INTEL_FILE', 'utf-8');
+
+    // Add sentinel + execFileSync require after existing requires
+    content = content.replace(
+      \"const path = require('path');\",
+      \"const path = require('path');\\n\" +
+      \"$INTEL_SENTINEL\\n\" +
+      \"const { execFileSync } = require('child_process');\"
+    );
+
+    // Skip if execFileSync is already imported (e.g. manually patched)
+    if (content.indexOf('execFileSync') < content.indexOf('$INTEL_SENTINEL')) {
+      // Already has execFileSync before our sentinel — skip that part
+      content = content.replace(
+        \"$INTEL_SENTINEL\\nconst { execFileSync } = require('child_process');\",
+        \"$INTEL_SENTINEL\"
+      );
+    }
+
+    // Add SONA helper functions after SESSION_FILE constant
+    const sonaBlock = [
+      '',
+      '// ── SONA HNSW search via learning-service.mjs ───────────────────────────────',
+      '',
+      'const SONA_LEARNING_SERVICE = path.join(process.cwd(), \\'.claude\\', \\'helpers\\', \\'learning-service.mjs\\');',
+      '',
+      'function sonaAvailable() {',
+      '  if (!fs.existsSync(SONA_LEARNING_SERVICE)) return false;',
+      '  try {',
+      '    var p1 = path.join(process.cwd(), \\'node_modules\\', \\'better-sqlite3\\');',
+      '    if (fs.existsSync(p1)) return true;',
+      '    var p2 = path.join(require(\\'os\\').homedir(), \\'.octoally\\', \\'ruflo\\', \\'node_modules\\', \\'better-sqlite3\\');',
+      '    return fs.existsSync(p2);',
+      '  } catch { return false; }',
+      '}',
+      '',
+      'function sonaSearch(query, k) {',
+      '  if (!sonaAvailable()) return [];',
+      '  try {',
+      '    var raw = execFileSync(\\'node\\', [SONA_LEARNING_SERVICE, \\'search\\', query, String(k || 10)], {',
+      '      cwd: process.cwd(), timeout: 5000, encoding: \\'utf-8\\', stdio: [\\'pipe\\', \\'pipe\\', \\'pipe\\'],',
+      '    }).trim();',
+      '    if (!raw) return [];',
+      '    var jsonStart = raw.indexOf(\\'{\\');',
+      '    if (jsonStart < 0) return [];',
+      '    var parsed = JSON.parse(raw.slice(jsonStart));',
+      '    return (parsed.patterns || []).filter(function(p) { return p.strategy && p.similarity > 0.1; });',
+      '  } catch { return []; }',
+      '}',
+    ].join('\\n');
+
+    content = content.replace(
+      /const SESSION_FILE = [^;]+;/,
+      content.match(/const SESSION_FILE = [^;]+;/)[0] + sonaBlock
+    );
+
+    // Patch init() to merge SONA patterns before graph building.
+    // Insert right before the 'Skip rebuild if graph is fresh' comment.
+    const sonaInitBlock = [
+      '  // Merge SONA HNSW patterns into store (runs once per init)',
+      '  try {',
+      '    var sonaPatterns = sonaSearch(\\'development patterns architecture bugs\\', 20);',
+      '    if (sonaPatterns.length > 0) {',
+      '      var existingKeys = new Set(store.map(function(e) { return e.key; }));',
+      '      var sonaAdded = 0;',
+      '      for (var si = 0; si < sonaPatterns.length; si++) {',
+      '        var sp = sonaPatterns[si];',
+      '        var sonaKey = \\'sona-\\' + (sp.strategy || \\'\\').toLowerCase().replace(/[^a-z0-9]+/g, \\'-\\').slice(0, 50);',
+      '        if (!existingKeys.has(sonaKey)) {',
+      '          store.push({',
+      '            id: \\'sona-\\' + Date.now() + \\'-\\' + si,',
+      '            key: sonaKey,',
+      '            content: sp.strategy,',
+      '            summary: sp.strategy.slice(0, 80),',
+      '            namespace: sp.domain || \\'sona\\',',
+      '            type: \\'semantic\\',',
+      '            metadata: { source: \\'sona-hnsw\\', similarity: sp.similarity, quality: sp.quality },',
+      '            createdAt: Date.now(),',
+      '          });',
+      '          existingKeys.add(sonaKey);',
+      '          sonaAdded++;',
+      '        }',
+      '      }',
+      '      if (sonaAdded > 0) writeJSON(STORE_PATH, store);',
+      '    }',
+      '  } catch (e) { /* SONA search failed — non-fatal */ }',
+      '',
+    ].join('\\n');
+
+    content = content.replace(
+      /  \/\/ Skip rebuild if graph is fresh/,
+      sonaInitBlock + '  // Skip rebuild if graph is fresh'
+    );
+
+    fs.writeFileSync('$tempfile', content);
+  "
+
+  if [ -f "$tempfile" ]; then
+    mv "$tempfile" "$INTEL_FILE"
+    success "intelligence.cjs patched with SONA HNSW read path"
+  else
+    warn "Failed to patch intelligence.cjs read path"
+    mv "${INTEL_FILE}.pre-sona-read" "$INTEL_FILE"
+    return 1
+  fi
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 main() {
@@ -376,6 +514,7 @@ main() {
   patch_hook_handler
   patch_sona_service
   ensure_better_sqlite3
+  patch_intelligence_read
 
   log "Done"
 }
