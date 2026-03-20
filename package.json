@@ -1,6 +1,6 @@
 {
   "name": "octoally",
-  "version": "0.1.50-alpha",
+  "version": "0.1.51-alpha",
   "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code sessions from a web UI",
   "type": "module",
   "scripts": {
