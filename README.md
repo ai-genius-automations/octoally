@@ -33,12 +33,12 @@
 <table>
 <tr>
 <td width="50%">
-<img src="docs/screenshots/hivemind.png" alt="Hive-Mind Session">
-<p><b>Hive-Mind Session</b> — Multi-agent orchestration powered by RuFlo. A coordinator agent breaks your objective into subtasks, delegates to specialized workers, and uses Byzantine consensus to merge results. Shared memory and HNSW vector search let agents build on each other's work.</p>
+<img src="docs/screenshots/projects.png" alt="Project Management">
+<p><b>Project Management</b> — Organize all your projects in one place. Add project folders, track RuFlo and DevCortex status, manage git repos and branches, and launch sessions directly from the project card. Each project gets its own configuration and session history.</p>
 </td>
 <td width="50%">
-<img src="docs/screenshots/web-tab.png" alt="Built-in Web Browser">
-<p><b>Built-in Web Browser</b> — Browse web pages directly inside OctoAlly alongside your coding sessions. Full browser with address bar, back/forward, and OAuth support — agents can build a web app and you can test it in the next tab without leaving the dashboard.</p>
+<img src="docs/screenshots/hivemind.png" alt="Hive-Mind Session">
+<p><b>Hive-Mind Session</b> — Multi-agent orchestration powered by RuFlo. A coordinator agent breaks your objective into subtasks, delegates to specialized workers, and uses Byzantine consensus to merge results. Shared memory and HNSW vector search let agents build on each other's work.</p>
 </td>
 </tr>
 <tr>
