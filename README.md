@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ai-genius-automations/octoally/main/dashboard/public/octoally-logo-lg.png" alt="OctoAlly" width="500">
+  <img src="https://raw.githubusercontent.com/ai-genius-automations/octoally/main/dashboard/public/octoally-logo-lg.png?v=2" alt="OctoAlly" width="500">
   <p align="center">
     <strong>AI Coding Session Orchestration Dashboard</strong>
   </p>
