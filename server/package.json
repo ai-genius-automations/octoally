@@ -1,6 +1,6 @@
 {
   "name": "@octoally/server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "OctoAlly backend server — Fastify + SQLite + WebSocket",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.0.0",
-    "@fastify/websocket": "^11.0.0",
+    "@fastify/websocket": "^11.0.1",
     "@trpc/client": "^11.10.0",
     "@trpc/server": "^11.10.0",
     "@xterm/addon-serialize": "^0.14.0",
