@@ -319,7 +319,22 @@ if launchctl list com.aigenius.hivecommand &>/dev/null 2>&1; then
   launchctl unload "$TARGET_HOME/Library/LaunchAgents/com.aigenius.hivecommand.plist" 2>/dev/null || true
   rm -f "$TARGET_HOME/Library/LaunchAgents/com.aigenius.hivecommand.plist"
 fi
-# Remove old HiveCommand desktop entries (Linux + macOS)
+# Purge old hivecommand-desktop deb package FIRST (it owns icons + desktop entries)
+if dpkg -l hivecommand-desktop &>/dev/null 2>&1; then
+  log_info "Purging old hivecommand-desktop package..."
+  $SUDO dpkg --purge hivecommand-desktop 2>/dev/null || true
+fi
+# macOS: remove old HiveCommand app from /Applications
+if [ -d "/Applications/HiveCommand.app" ]; then
+  log_info "Removing old app: /Applications/HiveCommand.app"
+  $SUDO rm -rf "/Applications/HiveCommand.app"
+fi
+# Fallback: remove /opt/HiveCommand if dpkg purge missed it
+if [ -d "/opt/HiveCommand" ]; then
+  log_info "Removing old install: /opt/HiveCommand"
+  $SUDO rm -rf "/opt/HiveCommand"
+fi
+# Remove old HiveCommand desktop entries (Linux + macOS) — after purge in case it left stragglers
 for _dentry in /usr/share/applications/hivecommand-desktop.desktop \
                "$TARGET_HOME/.local/share/applications/hivecommand-desktop.desktop" \
                "$TARGET_HOME/.local/share/applications/HiveCommand.desktop"; do
@@ -332,14 +347,30 @@ for _dentry in /usr/share/applications/hivecommand-desktop.desktop \
     fi
   fi
 done
-# macOS: remove old HiveCommand app from /Applications
-if [ -d "/Applications/HiveCommand.app" ]; then
-  log_info "Removing old app: /Applications/HiveCommand.app"
-  $SUDO rm -rf "/Applications/HiveCommand.app"
+# Remove old HiveCommand icons from BOTH system and user icon dirs — after purge
+for _size in 16x16 22x22 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
+  _sys_icon="/usr/share/icons/hicolor/${_size}/apps/hivecommand-desktop.png"
+  _usr_icon="$TARGET_HOME/.local/share/icons/hicolor/${_size}/apps/hivecommand-desktop.png"
+  if [ -f "$_sys_icon" ]; then
+    log_info "Removing old icon: $_sys_icon"
+    $SUDO rm -f "$_sys_icon"
+  fi
+  if [ -f "$_usr_icon" ]; then
+    log_info "Removing old icon: $_usr_icon"
+    rm -f "$_usr_icon"
+  fi
+done
+# Also sweep any HiveCommand icons from pixmaps
+if [ -f "/usr/share/pixmaps/hivecommand-desktop.png" ]; then
+  $SUDO rm -f "/usr/share/pixmaps/hivecommand-desktop.png"
 fi
-if [ -d "/opt/HiveCommand" ]; then
-  log_info "Removing old install: /opt/HiveCommand"
-  $SUDO rm -rf "/opt/HiveCommand"
+# Rebuild icon caches after all removals
+if command -v gtk-update-icon-cache &>/dev/null; then
+  $SUDO gtk-update-icon-cache -f /usr/share/icons/hicolor/ 2>/dev/null || true
+  gtk-update-icon-cache -f "$TARGET_HOME/.local/share/icons/hicolor/" 2>/dev/null || true
+fi
+if command -v xdg-icon-resource &>/dev/null; then
+  xdg-icon-resource forceupdate 2>/dev/null || true
 fi
 
 # --- Step 2: Download release ------------------------------------------------
