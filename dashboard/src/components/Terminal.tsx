@@ -611,36 +611,39 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
   }, [hideCursor]);
 
   // Re-focus and refit terminal when it becomes visible.
-  // Double-RAF ensures the DOM has fully laid out at the new container size
-  // before measuring. Without this, switching between projects can send a
-  // resize with the previous (narrow) dimensions, causing Claude to render
-  // at the wrong width and hang for seconds before SIGWINCH fixes it.
+  // Single RAF + short delay ensures DOM layout is settled before measuring.
   useEffect(() => {
     if (visible && !suspended && termRef.current) {
       termRef.current.scrollToBottom();
       termRef.current.focus();
       let cancelled = false;
-      // Double-RAF: first RAF schedules after paint, second ensures layout is done
       requestAnimationFrame(() => {
         if (cancelled) return;
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          const fit = fitRef.current;
-          const term = termRef.current;
-          const w = wsRef.current;
-          if (fit && term) {
-            fit.fit();
-            if (!passiveResizeRef.current && w && w.readyState === WebSocket.OPEN) {
-              w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        const fit = fitRef.current;
+        const term = termRef.current;
+        const w = wsRef.current;
+        if (fit && term) {
+          fit.fit();
+          if (!passiveResizeRef.current && w && w.readyState === WebSocket.OPEN) {
+            w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+            // Codex: after resize, send capture-pane refresh for correct display.
+            // Raw replay chunks from different widths render garbled for Codex.
+            if (cliType === 'codex') {
+              setTimeout(() => {
+                if (!cancelled && w.readyState === WebSocket.OPEN) {
+                  term.reset();
+                  w.send(JSON.stringify({ type: 'refresh' }));
+                }
+              }, 300);
             }
-            term.scrollToBottom();
-            term.focus();
           }
-        });
+          term.scrollToBottom();
+          term.focus();
+        }
       });
       return () => { cancelled = true; };
     }
-  }, [visible, suspended]);
+  }, [visible, suspended, cliType]);
 
   // Re-focus terminal when returning from a different browser tab
   useEffect(() => {
