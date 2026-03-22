@@ -30,11 +30,13 @@ import {
   Brain,
   Bot,
   TerminalSquare,
+  Search,
 } from 'lucide-react';
+import { ClaudeIcon, CodexIcon } from './CliIcons';
 import { ConfirmModal } from './ConfirmModal';
 
 interface ProjectDashboardProps {
-  onOpenProject: (projectId: string, projectName: string, quickLaunch?: 'hivemind' | 'agent' | 'terminal') => void;
+  onOpenProject: (projectId: string, projectName: string, quickLaunch?: 'hivemind' | 'agent' | 'terminal', cliType?: 'claude' | 'codex') => void;
 }
 
 type ViewState = { mode: 'list' } | { mode: 'add' } | { mode: 'edit'; project: Project };
@@ -140,13 +142,16 @@ function ProjectForm({
   const [rufloPrompt, setClaudeFlowPrompt] = useState(project?.ruflo_prompt || '');
   const [openclawPrompt, setOpenclawPrompt] = useState(project?.openclaw_prompt || '');
   const [claudeMd, setClaudeMd] = useState('');
+  const [agentsMd, setAgentsMd] = useState('');
   const [settingsJson, setSettingsJson] = useState('');
   const [showBrowser, setShowBrowser] = useState(false);
   const [claudeMdPreview, setClaudeMdPreview] = useState(false);
+  const [agentsMdPreview, setAgentsMdPreview] = useState(false);
   const [error, setError] = useState('');
 
   // Track initial loaded values to detect changes
   const [initialClaudeMd, setInitialClaudeMd] = useState('');
+  const [initialAgentsMd, setInitialAgentsMd] = useState('');
   const [initialSettingsJson, setInitialSettingsJson] = useState('');
 
   const projectPath = mode === 'edit' ? project!.path : path;
@@ -155,6 +160,14 @@ function ProjectForm({
   const claudeMdQuery = useQuery({
     queryKey: ['file-read', projectPath, 'CLAUDE.md'],
     queryFn: () => api.files.read(`${projectPath}/CLAUDE.md`),
+    enabled: !!projectPath && mode === 'edit',
+    retry: false,
+  });
+
+  // Load AGENTS.md (edit mode only — Codex config)
+  const agentsMdQuery = useQuery({
+    queryKey: ['file-read', projectPath, 'AGENTS.md'],
+    queryFn: () => api.files.read(`${projectPath}/AGENTS.md`),
     enabled: !!projectPath && mode === 'edit',
     retry: false,
   });
@@ -177,6 +190,16 @@ function ProjectForm({
       setInitialClaudeMd('');
     }
   }, [claudeMdQuery.isSuccess, claudeMdQuery.isError, claudeMdQuery.data?.content]);
+
+  useEffect(() => {
+    if (agentsMdQuery.isSuccess) {
+      setAgentsMd(agentsMdQuery.data.content);
+      setInitialAgentsMd(agentsMdQuery.data.content);
+    } else if (agentsMdQuery.isError) {
+      setAgentsMd('');
+      setInitialAgentsMd('');
+    }
+  }, [agentsMdQuery.isSuccess, agentsMdQuery.isError, agentsMdQuery.data?.content]);
 
   useEffect(() => {
     if (settingsQuery.isSuccess) {
@@ -236,6 +259,7 @@ function ProjectForm({
       const savePath = project!.path;
       try {
         if (claudeMd !== initialClaudeMd) await api.files.write(`${savePath}/CLAUDE.md`, claudeMd);
+        if (agentsMd !== initialAgentsMd) await api.files.write(`${savePath}/AGENTS.md`, agentsMd);
         if (settingsJson !== initialSettingsJson)
           await api.files.write(`${savePath}/.claude/settings.json`, settingsJson);
       } catch {
@@ -255,11 +279,12 @@ function ProjectForm({
     if (installRuflo && path) {
       try {
         // Use a lightweight check: see if .claude/settings.json or CLAUDE.md exist at the path
-        const conflicts = { settingsJson: false, claudeMd: false };
+        const conflicts = { settingsJson: false, claudeMd: false, agentsMd: false };
         try { await api.files.read(`${path}/CLAUDE.md`); conflicts.claudeMd = true; } catch {}
+        try { await api.files.read(`${path}/AGENTS.md`); conflicts.agentsMd = true; } catch {}
         try { await api.files.read(`${path}/.claude/settings.json`); conflicts.settingsJson = true; } catch {}
 
-        if (conflicts.settingsJson || conflicts.claudeMd) {
+        if (conflicts.settingsJson || conflicts.claudeMd || conflicts.agentsMd) {
           setRufloConflicts(conflicts);
           setRufloConfirmPending(true);
           return;
@@ -275,10 +300,10 @@ function ProjectForm({
     setShowBrowser(false);
   };
 
-  const filesLoading = mode === 'edit' && (!!projectPath) && (claudeMdQuery.isLoading || settingsQuery.isLoading);
+  const filesLoading = mode === 'edit' && (!!projectPath) && (claudeMdQuery.isLoading || agentsMdQuery.isLoading || settingsQuery.isLoading);
 
   const [installRuflo, setInstallRuflo] = useState(true);
-  const [rufloConflicts, setRufloConflicts] = useState<{ settingsJson: boolean; claudeMd: boolean } | null>(null);
+  const [rufloConflicts, setRufloConflicts] = useState<{ settingsJson: boolean; claudeMd: boolean; agentsMd: boolean } | null>(null);
   const [rufloConfirmPending, setRufloConfirmPending] = useState(false);
   const [rufloSetupStatus, setRufloSetupStatus] = useState<'idle' | 'installing' | 'done' | 'error'>('idle');
 
@@ -323,7 +348,7 @@ function ProjectForm({
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="mx-auto" style={{ maxWidth: '720px' }}>
+      <div className="mx-auto" style={{ maxWidth: '1100px' }}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -617,88 +642,147 @@ function ProjectForm({
 
             {/* ===== Edit mode: Prompts + Files section ===== */}
             {mode === 'edit' && (
-              <div className="grid grid-cols-3 gap-x-6 gap-y-4 items-stretch pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                {/* Prompts */}
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col flex-1">
-                    <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>RuFlo Session Prompt</label>
+              <div className="flex flex-col gap-4 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                {/* Row 1: Session prompts — 2 columns */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col">
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>RuFlo Session Prompt</label>
                     <textarea
                       value={rufloPrompt}
                       onChange={(e) => setClaudeFlowPrompt(e.target.value)}
                       placeholder="System instructions prepended to every task for this project..."
                       className={`${inputClass} resize-y flex-1`}
-                      style={{ ...inputStyle, minHeight: '120px' }}
+                      style={{ ...inputStyle, minHeight: '80px' }}
                     />
                   </div>
-                  <div className="flex flex-col flex-1">
-                    <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>OpenClaw Session Prompt</label>
+                  <div className="flex flex-col">
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>OpenClaw Session Prompt</label>
                     <textarea
                       value={openclawPrompt}
                       onChange={(e) => setOpenclawPrompt(e.target.value)}
                       placeholder="Additional instructions included when running via OpenClaw..."
                       className={`${inputClass} resize-y flex-1`}
-                      style={{ ...inputStyle, minHeight: '120px' }}
+                      style={{ ...inputStyle, minHeight: '80px' }}
                     />
                   </div>
                 </div>
 
-                {/* CLAUDE.md */}
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      CLAUDE.md
-                      {filesLoading && <Loader2 className="w-3 h-3 inline ml-1 animate-spin" />}
-                    </label>
-                    {projectPath && claudeMd && (
-                      <button
-                        type="button"
-                        onClick={() => setClaudeMdPreview(true)}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs hover:bg-white/10"
-                        style={{ color: 'var(--text-secondary)' }}
-                        title="Preview rendered markdown"
-                      >
-                        <Eye className="w-3 h-3" />
-                        Preview
-                      </button>
-                    )}
-                  </div>
-                  <textarea
-                    value={claudeMd}
-                    onChange={(e) => setClaudeMd(e.target.value)}
-                    placeholder="File will be created on save"
-                    className={`${inputClass} resize-y font-mono text-xs flex-1`}
-                    style={{ ...inputStyle, minHeight: '260px' }}
-                  />
-                  {claudeMdPreview && (
-                    <div
-                      className="fixed inset-0 z-50 flex items-center justify-center p-8"
-                      style={{ background: 'rgba(0,0,0,0.6)' }}
-                      onClick={() => setClaudeMdPreview(false)}
-                    >
+                {/* Row 2: CLAUDE.md + AGENTS.md — side by side */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* CLAUDE.md */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+                        <ClaudeIcon className="w-3 h-3" style={{ color: '#D97757' }} />
+                        CLAUDE.md <span className="font-normal opacity-60">(Claude instructions)</span>
+                        {filesLoading && <Loader2 className="w-3 h-3 inline ml-1 animate-spin" />}
+                      </label>
+                      {projectPath && claudeMd && (
+                        <button
+                          type="button"
+                          onClick={() => setClaudeMdPreview(true)}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs hover:bg-white/10"
+                          style={{ color: 'var(--text-secondary)' }}
+                          title="Preview rendered markdown"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Preview
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={claudeMd}
+                      onChange={(e) => setClaudeMd(e.target.value)}
+                      placeholder="Claude Code project instructions — file will be created on save"
+                      className={`${inputClass} resize-y font-mono text-xs flex-1`}
+                      style={{ ...inputStyle, minHeight: '220px' }}
+                    />
+                    {claudeMdPreview && (
                       <div
-                        className="w-full rounded-xl border flex flex-col"
-                        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', maxWidth: '900px', height: 'calc(100vh - 80px)' }}
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-8"
+                        style={{ background: 'rgba(0,0,0,0.6)' }}
+                        onClick={() => setClaudeMdPreview(false)}
                       >
-                        <div className="flex items-center justify-between px-5 py-3 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-                          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>CLAUDE.md Preview</span>
-                          <button onClick={() => setClaudeMdPreview(false)} className="p-1 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}>
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto px-8 py-6">
-                          <div className="markdown-preview" style={{ color: 'var(--text-primary)' }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{claudeMd || '*No content*'}</ReactMarkdown>
+                        <div
+                          className="w-full rounded-xl border flex flex-col"
+                          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', maxWidth: '900px', height: 'calc(100vh - 80px)' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between px-5 py-3 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+                            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>CLAUDE.md Preview</span>
+                            <button onClick={() => setClaudeMdPreview(false)} className="p-1 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}>
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-8 py-6">
+                            <div className="markdown-preview" style={{ color: 'var(--text-primary)' }}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{claudeMd || '*No content*'}</ReactMarkdown>
+                            </div>
                           </div>
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* AGENTS.md */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+                        <CodexIcon className="w-3 h-3" style={{ color: '#7A9DFF' }} />
+                        AGENTS.md <span className="font-normal opacity-60">(Codex instructions)</span>
+                        {filesLoading && <Loader2 className="w-3 h-3 inline ml-1 animate-spin" />}
+                      </label>
+                      {projectPath && agentsMd && (
+                        <button
+                          type="button"
+                          onClick={() => setAgentsMdPreview(true)}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs hover:bg-white/10"
+                          style={{ color: 'var(--text-secondary)' }}
+                          title="Preview rendered markdown"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Preview
+                        </button>
+                      )}
                     </div>
-                  )}
+                    <textarea
+                      value={agentsMd}
+                      onChange={(e) => setAgentsMd(e.target.value)}
+                      placeholder="Codex project instructions — file will be created on save"
+                      className={`${inputClass} resize-y font-mono text-xs flex-1`}
+                      style={{ ...inputStyle, minHeight: '220px' }}
+                    />
+                    {agentsMdPreview && (
+                      <div
+                        className="fixed inset-0 z-50 flex items-center justify-center p-8"
+                        style={{ background: 'rgba(0,0,0,0.6)' }}
+                        onClick={() => setAgentsMdPreview(false)}
+                      >
+                        <div
+                          className="w-full rounded-xl border flex flex-col"
+                          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', maxWidth: '900px', height: 'calc(100vh - 80px)' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between px-5 py-3 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+                            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>AGENTS.md Preview</span>
+                            <button onClick={() => setAgentsMdPreview(false)} className="p-1 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}>
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-8 py-6">
+                            <div className="markdown-preview" style={{ color: 'var(--text-primary)' }}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{agentsMd || '*No content*'}</ReactMarkdown>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* .claude/settings.json */}
+                {/* Row 3: .claude/settings.json — full width */}
                 <div className="flex flex-col">
-                  <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
                     .claude/settings.json
                     {filesLoading && <Loader2 className="w-3 h-3 inline ml-1 animate-spin" />}
                   </label>
@@ -706,8 +790,8 @@ function ProjectForm({
                     value={settingsJson}
                     onChange={(e) => setSettingsJson(e.target.value)}
                     placeholder="File will be created on save"
-                    className={`${inputClass} resize-y font-mono text-xs flex-1`}
-                    style={{ ...inputStyle, minHeight: '260px' }}
+                    className={`${inputClass} resize-y font-mono text-xs`}
+                    style={{ ...inputStyle, minHeight: '180px' }}
                   />
                 </div>
               </div>
@@ -761,7 +845,7 @@ function ProjectForm({
             {rufloConfirmPending && rufloConflicts && (
               <ConfirmModal
                 title="RuFlo will overwrite existing files"
-                message={`This project has config files that will be replaced by RuFlo:\n${rufloConflicts.settingsJson ? '  - .claude/settings.json\n' : ''}${rufloConflicts.claudeMd ? '  - CLAUDE.md\n' : ''}\nTimestamped .bak backups will be created before overwriting.`}
+                message={`This project has config files that will be replaced by RuFlo (dual mode — Claude + Codex):\n${rufloConflicts.settingsJson ? '  - .claude/settings.json\n' : ''}${rufloConflicts.claudeMd ? '  - CLAUDE.md\n' : ''}${rufloConflicts.agentsMd ? '  - AGENTS.md\n' : ''}\nTimestamped .bak backups will be created before overwriting.`}
                 confirmLabel="Continue & Backup"
                 variant="danger"
                 onConfirm={() => {
@@ -1218,7 +1302,19 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
     queryFn: () => api.projects.list(),
   });
 
-  const projects = projectsData?.projects || [];
+  const allProjects = projectsData?.projects || [];
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const projects = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return allProjects;
+    return allProjects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.path.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q))
+    );
+  }, [allProjects, searchQuery]);
 
   // Claude-flow status for all projects
   const { data: cfStatusData } = useQuery({
@@ -1237,8 +1333,8 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
   });
 
   const [installingId, setInstallingId] = useState<string | null>(null);
-  const [installError, setInstallError] = useState<string | null>(null);
-  const [rufloConfirm, setRufloConfirm] = useState<{ id: string; conflicts: { settingsJson: boolean; claudeMd: boolean } } | null>(null);
+  const [_installError, setInstallError] = useState<string | null>(null);
+  const [rufloConfirm, setRufloConfirm] = useState<{ id: string; conflicts: { settingsJson: boolean; claudeMd: boolean; agentsMd: boolean } } | null>(null);
   const installMutation = useMutation({
     mutationFn: (id: string) => api.projects.rufloInstall(id),
     onMutate: (id) => { setInstallingId(id); setInstallError(null); },
@@ -1452,6 +1548,33 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
               Add Project
             </button>
           </div>
+          {/* Search / filter bar */}
+          <div className="relative mt-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter projects..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+              }}
+              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-white/10"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Scrollable project cards grid */}
@@ -1539,6 +1662,16 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                           v{version}
                         </span>
                       )}
+                      {cfStatus?.installed && !cfStatus?.codexReady && (
+                        <button
+                          className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap animate-pulse"
+                          style={{ background: '#10b98115', color: '#10b981', border: '1px solid #10b98140' }}
+                          title="Re-init to enable Codex CLI support (creates AGENTS.md)"
+                          onClick={(e) => { e.stopPropagation(); handleRufloInstall(project.id); }}
+                        >
+                          + Codex
+                        </button>
+                      )}
                       {cfStatus?.sonaPatchOutdated && (
                         <button
                           className="shrink-0 ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap animate-pulse"
@@ -1610,59 +1743,66 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                       <GitInfoBadge projectPath={project.path} />
                     </div>
 
-                    <div className="flex items-center gap-1 mt-auto pt-1" onClick={(e) => e.stopPropagation()}>
-                      {/* Quick-launch buttons */}
+                    {/* Row 1: Launch buttons — dual icons, type-colored, stretched */}
+                    {(() => {
+                      const codexOk = cfStatus?.codexReady ?? false;
+                      const codexTitle = codexOk ? undefined : 'Codex not initialized — re-init RuFlo to enable';
+                      return (
+                    <div className="grid grid-cols-5 gap-1 mt-auto pt-1" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => onOpenProject(project.id, project.name, 'hivemind')}
-                        className="p-1.5 rounded-lg border text-xs"
-                        style={{ background: '#3b82f615', borderColor: '#3b82f640', color: '#60a5fa' }}
-                        title="Quick launch Hive Mind"
+                        onClick={() => onOpenProject(project.id, project.name, 'hivemind', 'claude')}
+                        className="flex items-center justify-center gap-0.5 p-1.5 rounded-lg border text-xs"
+                        style={{ background: '#3b82f610', borderColor: '#3b82f630', color: '#60a5fa' }}
+                        title="Claude Hive Mind"
                       >
-                        <Zap className="w-3.5 h-3.5" />
+                        <ClaudeIcon className="w-3 h-3" />
+                        <Zap className="w-3 h-3" />
                       </button>
                       <button
-                        onClick={() => onOpenProject(project.id, project.name, 'agent')}
-                        className="p-1.5 rounded-lg border text-xs"
-                        style={{ background: '#ef444415', borderColor: '#ef444440', color: '#ef4444' }}
-                        title="Quick launch Coder Agent"
+                        onClick={() => onOpenProject(project.id, project.name, 'agent', 'claude')}
+                        className="flex items-center justify-center gap-0.5 p-1.5 rounded-lg border text-xs"
+                        style={{ background: '#ef444410', borderColor: '#ef444430', color: '#ef4444' }}
+                        title="Claude Agent"
                       >
-                        <Bot className="w-3.5 h-3.5" />
+                        <ClaudeIcon className="w-3 h-3" />
+                        <Bot className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => codexOk && onOpenProject(project.id, project.name, 'hivemind', 'codex')}
+                        disabled={!codexOk}
+                        className="flex items-center justify-center gap-0.5 p-1.5 rounded-lg border text-xs"
+                        style={{ background: '#3b82f610', borderColor: '#3b82f630', color: '#60a5fa', opacity: codexOk ? 1 : 0.35, cursor: codexOk ? 'pointer' : 'not-allowed' }}
+                        title={codexTitle || 'Codex Hive Mind'}
+                      >
+                        <CodexIcon className="w-3 h-3" />
+                        <Zap className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => codexOk && onOpenProject(project.id, project.name, 'agent', 'codex')}
+                        disabled={!codexOk}
+                        className="flex items-center justify-center gap-0.5 p-1.5 rounded-lg border text-xs"
+                        style={{ background: '#ef444410', borderColor: '#ef444430', color: '#ef4444', opacity: codexOk ? 1 : 0.35, cursor: codexOk ? 'pointer' : 'not-allowed' }}
+                        title={codexTitle || 'Codex Agent'}
+                      >
+                        <CodexIcon className="w-3 h-3" />
+                        <Bot className="w-3 h-3" />
                       </button>
                       <button
                         onClick={() => onOpenProject(project.id, project.name, 'terminal')}
-                        className="p-1.5 rounded-lg border text-xs"
-                        style={{ background: '#f59e0b15', borderColor: '#f59e0b40', color: '#f59e0b' }}
-                        title="Quick launch Terminal"
+                        className="flex items-center justify-center p-1.5 rounded-lg border text-xs"
+                        style={{ background: '#f59e0b10', borderColor: '#f59e0b30', color: '#f59e0b' }}
+                        title="Terminal"
                       >
                         <TerminalSquare className="w-3.5 h-3.5" />
                       </button>
-                      {/* Install ruflo button for projects without it */}
-                      {!cfStatus?.installed && (
-                        <button
-                          onClick={() => handleRufloInstall(project.id)}
-                          disabled={isInstalling}
-                          className="flex items-center gap-1 p-1.5 rounded-lg border text-xs"
-                          style={{ background: '#3b82f615', borderColor: '#3b82f640', color: isInstalling ? '#facc15' : (installError && installingId === null) ? '#f87171' : '#60a5fa' }}
-                          title={isInstalling ? 'Installing RuFlo...' : 'Install RuFlo (memory + hive-mind)'}
-                        >
-                          {isInstalling ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>Installing...</span>
-                            </>
-                          ) : (
-                            <Download className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      )}
-                      {installError && installingId === null && !cfStatus?.installed && (
-                        <span className="text-[10px]" style={{ color: '#f87171' }} title={installError}>
-                          Failed - retry?
-                        </span>
-                      )}
+                    </div>
+                      );
+                    })()}
+                    {/* Row 2: Utility buttons — stretched */}
+                    <div className="grid gap-1" style={{ gridTemplateColumns: !cfStatus?.installed ? 'repeat(6, 1fr)' : 'repeat(5, 1fr)' }} onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => api.openFolder(project.path)}
-                        className="p-1.5 rounded-lg border text-xs"
+                        className="flex items-center justify-center p-1.5 rounded-lg border text-xs"
                         style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                         title="Open in file manager"
                       >
@@ -1670,7 +1810,7 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                       </button>
                       <button
                         onClick={() => api.openTerminal(project.path)}
-                        className="p-1.5 rounded-lg border text-xs"
+                        className="flex items-center justify-center p-1.5 rounded-lg border text-xs"
                         style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                         title="Open in terminal"
                       >
@@ -1678,7 +1818,7 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                       </button>
                       <button
                         onClick={() => setView({ mode: 'edit', project })}
-                        className="p-1.5 rounded-lg border text-xs"
+                        className="flex items-center justify-center p-1.5 rounded-lg border text-xs"
                         style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                         title="Edit project"
                       >
@@ -1688,7 +1828,7 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                         <button
                           onClick={() => handleRufloInstall(project.id)}
                           disabled={isInstalling}
-                          className="flex items-center gap-1 p-1.5 rounded-lg border text-xs"
+                          className="flex items-center justify-center gap-1 p-1.5 rounded-lg border text-xs"
                           style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: isInstalling ? '#facc15' : 'var(--text-secondary)' }}
                           title={isInstalling ? 'Re-initializing RuFlo...' : 'Re-init RuFlo (update agents + memory)'}
                         >
@@ -1699,9 +1839,24 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
                           )}
                         </button>
                       )}
+                      {!cfStatus?.installed && (
+                        <button
+                          onClick={() => handleRufloInstall(project.id)}
+                          disabled={isInstalling}
+                          className="flex items-center justify-center gap-1 p-1.5 rounded-lg border text-xs"
+                          style={{ background: '#3b82f610', borderColor: '#3b82f630', color: isInstalling ? '#facc15' : '#60a5fa' }}
+                          title={isInstalling ? 'Installing RuFlo...' : 'Install RuFlo'}
+                        >
+                          {isInstalling ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={() => setConfirmDeleteId(project.id)}
-                        className="p-1.5 rounded-lg border text-xs"
+                        className="flex items-center justify-center p-1.5 rounded-lg border text-xs"
                         style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                         title="Remove project"
                       >
@@ -1738,7 +1893,7 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
       {rufloConfirm && (
         <ConfirmModal
           title="Install / Re-init RuFlo"
-          message={`This project has existing config files that will be replaced:\n${rufloConfirm.conflicts.settingsJson ? '• .claude/settings.json\n' : ''}${rufloConfirm.conflicts.claudeMd ? '• CLAUDE.md\n' : ''}\nBackups will be created with a .bak extension before overwriting.`}
+          message={`This project has existing config files that will be replaced (dual mode — Claude + Codex):\n${rufloConfirm.conflicts.settingsJson ? '• .claude/settings.json\n' : ''}${rufloConfirm.conflicts.claudeMd ? '• CLAUDE.md\n' : ''}${rufloConfirm.conflicts.agentsMd ? '• AGENTS.md\n' : ''}\nBackups will be created with a .bak extension before overwriting.`}
           confirmLabel="Continue & Backup"
           variant="danger"
           onConfirm={() => {

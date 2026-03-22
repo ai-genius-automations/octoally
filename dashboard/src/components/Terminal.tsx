@@ -143,12 +143,14 @@ interface TerminalProps {
   passiveResize?: boolean;
   /** Hide the xterm.js cursor. Used for RuFlo sessions where the CLI renders its own cursor. */
   hideCursor?: boolean;
+  /** CLI type — Codex sessions need capture-pane refresh on tab switch/resize */
+  cliType?: 'claude' | 'codex';
   onExit?: (exitCode: number) => void;
   onReconnect?: () => void;
   onPopOut?: () => void;
 }
 
-export function Terminal({ sessionId, visible = true, suspended = false, passiveResize = false, hideCursor = false, onExit, onReconnect, onPopOut }: TerminalProps) {
+export function Terminal({ sessionId, visible = true, suspended = false, passiveResize = false, hideCursor = false, cliType, onExit, onReconnect, onPopOut }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -387,7 +389,10 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
           switch (msg.type) {
             case 'output':
               reconnectAttempts = 0;
-              pendingData += msg.data;
+              // Defense-in-depth: strip focus reporting enable/disable sequences
+              // so xterm.js never enters sendFocusMode (which causes focus/blur
+              // events to be sent as input, corrupting Codex TUI rendering)
+              pendingData += msg.data.replace(/\x1b\[\?1004[hl]/g, '');
               if (rafId === null) {
                 rafId = requestAnimationFrame(flushWrite);
               }
@@ -572,7 +577,6 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       // Switching from passive (grid) to active (full) — clear and reconnect
       termRef.current.reset();
       disconnectFnRef.current?.();
-      // Small delay to ensure the WebSocket URL picks up the new passive=0 state
       setTimeout(() => connectFnRef.current?.(), 50);
     }
   }, [passiveResize, suspended]);
@@ -595,6 +599,8 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
   }, [hideCursor]);
 
   // Re-focus and refit terminal when it becomes visible
+  const prevColsRef = useRef(0);
+  const prevRowsRef = useRef(0);
   useEffect(() => {
     if (visible && !suspended && termRef.current) {
       termRef.current.scrollToBottom();
@@ -605,7 +611,12 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         const w = wsRef.current;
         if (fit && term) {
           fit.fit();
-          if (!passiveResizeRef.current && w && w.readyState === WebSocket.OPEN) {
+          // Only send resize if dimensions actually changed — prevents
+          // Codex (and other TUIs) from redrawing unnecessarily on tab switch
+          const changed = term.cols !== prevColsRef.current || term.rows !== prevRowsRef.current;
+          prevColsRef.current = term.cols;
+          prevRowsRef.current = term.rows;
+          if (changed && !passiveResizeRef.current && w && w.readyState === WebSocket.OPEN) {
             w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
           }
           term.scrollToBottom();
@@ -615,6 +626,30 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       return () => clearTimeout(refitTimer);
     }
   }, [visible, suspended]);
+
+  // Auto-refresh Codex sessions via capture-pane when they become visible
+  // in full (non-passive) view. Only for Codex — Claude handles resize fine.
+  // Does NOT fire for grid/thumbnail (passive) terminals to avoid corrupting
+  // Claude grid cards and causing unnecessary flashing.
+  const prevVisibleRef = useRef(visible);
+  useEffect(() => {
+    const wasHidden = !prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+
+    // Only refresh Codex, only when becoming visible, only in active (non-passive) mode
+    if (cliType !== 'codex' || !visible || suspended || passiveResize || !wasHidden) return;
+
+    // Schedule capture-pane refresh after reconnect/refit settles
+    const timer = setTimeout(() => {
+      const term = termRef.current;
+      const w = wsRef.current;
+      if (term && w && w.readyState === WebSocket.OPEN) {
+        term.reset();
+        w.send(JSON.stringify({ type: 'refresh' }));
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [visible, suspended, cliType, passiveResize]);
 
   // Re-focus terminal when returning from a different browser tab
   useEffect(() => {
@@ -673,22 +708,21 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     return () => window.removeEventListener('octoally:terminal-input', handler);
   }, [visible, suspended]);
 
-  // Voice command: refresh terminal display
+  // Voice command / refresh button: refresh terminal display
   useEffect(() => {
     const handler = (e: Event) => {
       const { sessionId: targetId } = (e as CustomEvent).detail;
       if (targetId !== sessionId) return;
       const term = termRef.current;
-      const w = wsRef.current;
-      if (!term || !w || w.readyState !== WebSocket.OPEN) return;
+      if (!term) return;
       const fit = fitRef.current;
       if (fit) fit.fit();
-      if (hideCursorRef.current) {
-        const cols = term.cols;
-        const rows = term.rows;
-        w.send(JSON.stringify({ type: 'resize', cols: cols - 1, rows }));
-        setTimeout(() => w.send(JSON.stringify({ type: 'resize', cols, rows })), 100);
+      const w = wsRef.current;
+      if (w && w.readyState === WebSocket.OPEN) {
+        term.reset();
+        w.send(JSON.stringify({ type: 'refresh' }));
       } else {
+        // WebSocket not open — full reconnect
         term.reset();
         disconnectFnRef.current?.();
         setTimeout(() => connectFnRef.current?.(), 50);
@@ -736,19 +770,15 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
               onClick={() => {
                 const term = termRef.current;
                 const w = wsRef.current;
-                if (!term || !w || w.readyState !== WebSocket.OPEN) return;
                 const fit = fitRef.current;
+                if (!term) return;
                 if (fit) fit.fit();
-                if (hideCursorRef.current) {
-                  // Hivemind: force tmux reflow — ruflo redraws on SIGWINCH
-                  const cols = term.cols;
-                  const rows = term.rows;
-                  w.send(JSON.stringify({ type: 'resize', cols: cols - 1, rows }));
-                  setTimeout(() => {
-                    w.send(JSON.stringify({ type: 'resize', cols, rows }));
-                  }, 100);
+                if (w && w.readyState === WebSocket.OPEN) {
+                  // WebSocket is open — request capture-pane refresh from server
+                  term.reset();
+                  w.send(JSON.stringify({ type: 'refresh' }));
                 } else {
-                  // Plain terminal: reconnect for a fresh replay without corrupting reflow
+                  // WebSocket is not open — do a full reconnect which replays output
                   term.reset();
                   disconnectFnRef.current?.();
                   setTimeout(() => connectFnRef.current?.(), 50);

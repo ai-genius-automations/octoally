@@ -36,6 +36,7 @@ interface SpawnMessage {
   mode: 'hivemind' | 'terminal' | 'agent';
   agentType?: string;
   rufloCommand?: string;
+  cliType?: 'claude' | 'codex';
   cols: number;
   rows: number;
   useTmux: boolean;
@@ -234,26 +235,49 @@ function cleanupPipePane(sessionId: string, fifoPath?: string): void {
    hivemind command builder
    ================================================================ */
 
-function buildHiveMindCommand(task: string, direct = false, rufloCmd = 'npx ruflo@latest'): string {
+function buildHiveMindCommand(task: string, direct = false, rufloCmd = 'npx ruflo@latest', cliType: 'claude' | 'codex' = 'claude'): string {
   const escaped = task.replace(/'/g, "'\\''");
+  if (cliType === 'codex') {
+    // For Codex: ruflo hive-mind spawn sets up the swarm but --codex workers run headlessly
+    // and exit immediately. Instead, spawn the swarm then launch codex as the interactive session.
+    const spawn = `${rufloCmd} hive-mind spawn '${escaped}' --codex 2>/dev/null;`;
+    // --no-alt-screen prevents Codex from using the alternate screen buffer,
+    // which fixes resize/reflow issues in tmux and embedded terminals
+    const codex = `codex --no-alt-screen '${escaped}'`;
+    const base = `${spawn} ${codex}`;
+    if (direct) {
+      return `command bash -c '${base.replace(/'/g, "'\\''")}'`;
+    }
+    return base;
+  }
+  // Claude: --claude flag launches an interactive Claude Code session directly
   if (direct) {
     return `command ${rufloCmd} hive-mind spawn '${escaped}' --claude`;
   }
-  // For non-direct (dtach/plain), try the hivemind alias first, fall back to full command
   return `${rufloCmd} hive-mind spawn '${escaped}' --claude`;
 }
 
-function buildAgentCommand(agentType: string, task: string, direct = false, rufloCmd = 'npx ruflo@latest'): string {
-  // Register agent with ruflo, then launch Claude Code with --agent flag.
-  // ruflo agent spawn registers metadata and exits; claude --agent starts the
-  // interactive session using the agent definition from .claude/agents/.
+function buildAgentCommand(agentType: string, task: string, direct = false, rufloCmd = 'npx ruflo@latest', cliType: 'claude' | 'codex' = 'claude'): string {
   const escapedType = agentType.replace(/'/g, "'\\''");
   const escapedTask = task.replace(/'/g, "'\\''");
   const register = `${rufloCmd} agent spawn --type '${escapedType}' 2>/dev/null;`;
-  const claude = task
-    ? `claude --agent '${escapedType}' '${escapedTask}'`
-    : `claude --agent '${escapedType}'`;
-  const base = `${register} ${claude}`;
+
+  let agentCmd: string;
+  if (cliType === 'codex') {
+    // Codex CLI doesn't have --agent flag. Pass the agent role as part of the prompt.
+    const prompt = task
+      ? `You are a ${agentType} agent. ${task}`
+      : `You are a ${agentType} agent. Ask me what I want you to do.`;
+    const escapedPrompt = prompt.replace(/'/g, "'\\''");
+    agentCmd = `codex --no-alt-screen '${escapedPrompt}'`;
+  } else {
+    // Claude CLI uses --agent to load agent definitions from .claude/agents/
+    agentCmd = task
+      ? `claude --agent '${escapedType}' '${escapedTask}'`
+      : `claude --agent '${escapedType}'`;
+  }
+
+  const base = `${register} ${agentCmd}`;
   if (direct) {
     return `command bash -c '${base.replace(/'/g, "'\\''")}'`;
   }
@@ -265,6 +289,12 @@ function buildAgentCommand(agentType: string, task: string, direct = false, rufl
    ================================================================ */
 
 const TERMINAL_RESPONSE_RE = /\x1b\[\?[\d;]*c|\x1b\[>[\d;]*c|\x1b\[\d+n|\x1b\[\d+;\d+R/g;
+
+// Focus reporting sequences — strip from PTY output so TUI programs (Codex)
+// can't enable focus reporting on xterm.js.  When focus reporting is active,
+// xterm.js sends \x1b[I / \x1b[O on focus/blur, which causes rendering
+// corruption when switching terminal tabs or toggling grid/single view.
+const FOCUS_REPORT_RE = /\x1b\[\?1004[hl]/g;
 
 /* ================================================================
    Worker state
@@ -292,15 +322,18 @@ function wireOutput(): void {
     send({ type: 'pty-data', data });
 
     if (!hasPipePane) {
-      // No pipe-pane: PTY output IS the display output
-      send({ type: 'output', data });
+      // No pipe-pane: PTY output IS the display output.
+      // Strip focus reporting sequences so TUIs can't enable focus events on the client xterm.
+      const filtered = data.replace(FOCUS_REPORT_RE, '');
+      if (filtered) send({ type: 'output', data: filtered });
     }
   });
 
   if (pipePaneStream) {
     pipePaneStream.on('data', (chunk: string | Buffer) => {
-      const data = typeof chunk === 'string' ? chunk : chunk.toString();
-      send({ type: 'output', data });
+      const raw = typeof chunk === 'string' ? chunk : chunk.toString();
+      const data = raw.replace(FOCUS_REPORT_RE, '');
+      if (data) send({ type: 'output', data });
     });
 
     pipePaneStream.on('error', (err) => {
@@ -333,6 +366,7 @@ async function handleSpawn(msg: SpawnMessage): Promise<void> {
   useDtach = msg.useDtach;
   const shell = process.env.SHELL || '/bin/bash';
   const rufloCmd = msg.rufloCommand || 'npx ruflo@latest';
+  const cliType = msg.cliType || 'claude';
 
   try {
     if (msg.mode === 'terminal') {
@@ -363,7 +397,7 @@ async function handleSpawn(msg: SpawnMessage): Promise<void> {
       }
     } else if (msg.mode === 'agent' && msg.agentType) {
       // agent mode — launch ruflo with --agent flag
-      const command = buildAgentCommand(msg.agentType, msg.task, msg.useTmux, rufloCmd);
+      const command = buildAgentCommand(msg.agentType, msg.task, msg.useTmux, rufloCmd, cliType);
       if (msg.useTmux) {
         await tmuxCreate(msg.sessionId, msg.projectPath, msg.cols, msg.rows, command);
         const pp = setupPipePane(msg.sessionId);
@@ -392,7 +426,7 @@ async function handleSpawn(msg: SpawnMessage): Promise<void> {
     } else {
       // hivemind mode
       if (msg.useTmux) {
-        const command = buildHiveMindCommand(msg.task, true, rufloCmd);
+        const command = buildHiveMindCommand(msg.task, true, rufloCmd, cliType);
         await tmuxCreate(msg.sessionId, msg.projectPath, msg.cols, msg.rows, command);
         const pp = setupPipePane(msg.sessionId);
         if (pp) {
@@ -405,7 +439,7 @@ async function handleSpawn(msg: SpawnMessage): Promise<void> {
           env: { ...process.env } as Record<string, string>,
         });
       } else if (msg.useDtach) {
-        const command = buildHiveMindCommand(msg.task, false, rufloCmd);
+        const command = buildHiveMindCommand(msg.task, false, rufloCmd, cliType);
         await dtachCreate(msg.sessionId, msg.projectPath, command);
         await new Promise(r => setTimeout(r, 100));
         ptyProcess = pty.spawn(shell, ['-c', `dtach -a ${dtachSocket(msg.sessionId)} -Ez`], {
@@ -413,7 +447,7 @@ async function handleSpawn(msg: SpawnMessage): Promise<void> {
           env: { ...process.env } as Record<string, string>,
         });
       } else {
-        const command = buildHiveMindCommand(msg.task, false, rufloCmd);
+        const command = buildHiveMindCommand(msg.task, false, rufloCmd, cliType);
         ptyProcess = pty.spawn(shell, ['-i', '-c', command], {
           name: 'xterm-256color', cols: msg.cols, rows: msg.rows, cwd: msg.projectPath,
           env: { ...process.env } as Record<string, string>,

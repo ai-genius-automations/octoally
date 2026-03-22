@@ -1,10 +1,49 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { X, Settings, Check, Loader2 } from 'lucide-react';
+import { X, Settings, Check, Loader2, Zap, Bot } from 'lucide-react';
+import { ClaudeIcon, CodexIcon } from './CliIcons';
 
 interface SettingsModalProps {
   onClose: () => void;
+}
+
+function CommandInput({
+  label,
+  icon,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+        {icon}
+        {label}
+      </label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 rounded-lg text-sm"
+        style={{
+          background: 'var(--bg-primary)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border)',
+          outline: 'none',
+        }}
+        onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+        onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+      />
+    </div>
+  );
 }
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
@@ -14,12 +53,20 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     queryFn: () => api.settings.get(),
   });
 
-  const [rufloCommand, setRufloCommand] = useState('');
+  const [hivemindClaudeCmd, setHivemindClaudeCmd] = useState('');
+  const [hivemindCodexCmd, setHivemindCodexCmd] = useState('');
+  const [agentClaudeCmd, setAgentClaudeCmd] = useState('');
+  const [agentCodexCmd, setAgentCodexCmd] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (data?.settings) {
-      setRufloCommand(data.settings.ruflo_command || '');
+      const s = data.settings;
+      // Fall back to ruflo_command for backward compat
+      setHivemindClaudeCmd(s.hivemind_claude_command || s.ruflo_command || '');
+      setHivemindCodexCmd(s.hivemind_codex_command || s.ruflo_command || '');
+      setAgentClaudeCmd(s.agent_claude_command || s.ruflo_command || '');
+      setAgentCodexCmd(s.agent_codex_command || s.ruflo_command || '');
     }
   }, [data]);
 
@@ -41,7 +88,13 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   });
 
   function handleSave() {
-    mutation.mutate({ ruflo_command: rufloCommand });
+    mutation.mutate({
+      ruflo_command: hivemindClaudeCmd, // keep backward compat
+      hivemind_claude_command: hivemindClaudeCmd,
+      hivemind_codex_command: hivemindCodexCmd,
+      agent_claude_command: agentClaudeCmd,
+      agent_codex_command: agentCodexCmd,
+    });
   }
 
   return (
@@ -54,7 +107,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         className="flex flex-col rounded-xl shadow-2xl overflow-hidden"
         style={{
           width: '100%',
-          maxWidth: '560px',
+          maxWidth: '620px',
+          maxHeight: '90vh',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border)',
         }}
@@ -62,7 +116,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-6 py-4"
+          className="flex items-center justify-between px-6 py-4 shrink-0"
           style={{ borderBottom: '1px solid var(--border)' }}
         >
           <div className="flex items-center gap-2">
@@ -81,44 +135,77 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-6 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--text-secondary)' }} />
             </div>
           ) : (
-            <div className="space-y-2">
-              <label
-                className="block text-xs font-medium"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                RuFlo Command
-              </label>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                The command used to run RuFlo when launching Hive-Mind or Agent sessions.
-              </p>
-              <input
-                type="text"
-                value={rufloCommand}
-                onChange={(e) => setRufloCommand(e.target.value)}
-                placeholder="npx ruflo@latest"
-                className="w-full px-3 py-2 rounded-lg text-sm"
-                style={{
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border)',
-                  outline: 'none',
-                }}
-                onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-                onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-              />
-            </div>
+            <>
+              {/* Hive Mind Commands */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4" style={{ color: '#60a5fa' }} />
+                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Hive Mind Commands
+                  </h4>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  The RuFlo command used when launching Hive Mind sessions.
+                </p>
+                <div className="space-y-3 pl-1">
+                  <CommandInput
+                    label="Claude"
+                    icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
+                    value={hivemindClaudeCmd}
+                    onChange={setHivemindClaudeCmd}
+                    placeholder="bash ~/.octoally/ruflo-run.sh"
+                  />
+                  <CommandInput
+                    label="Codex"
+                    icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
+                    value={hivemindCodexCmd}
+                    onChange={setHivemindCodexCmd}
+                    placeholder="bash ~/.octoally/ruflo-run.sh"
+                  />
+                </div>
+              </div>
+
+              {/* Agent Commands */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Bot className="w-4 h-4" style={{ color: '#ef4444' }} />
+                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Agent Commands
+                  </h4>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  The RuFlo command used when launching single Agent sessions.
+                </p>
+                <div className="space-y-3 pl-1">
+                  <CommandInput
+                    label="Claude"
+                    icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
+                    value={agentClaudeCmd}
+                    onChange={setAgentClaudeCmd}
+                    placeholder="bash ~/.octoally/ruflo-run.sh"
+                  />
+                  <CommandInput
+                    label="Codex"
+                    icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
+                    value={agentCodexCmd}
+                    onChange={setAgentCodexCmd}
+                    placeholder="bash ~/.octoally/ruflo-run.sh"
+                  />
+                </div>
+              </div>
+            </>
           )}
         </div>
 
         {/* Footer */}
         <div
-          className="flex items-center justify-end gap-2 px-6 py-4"
+          className="flex items-center justify-end gap-2 px-6 py-4 shrink-0"
           style={{ borderTop: '1px solid var(--border)' }}
         >
           <button

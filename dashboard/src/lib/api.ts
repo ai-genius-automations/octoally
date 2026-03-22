@@ -20,7 +20,7 @@ export const api = {
     list: (status?: string) =>
       fetchJSON<{ sessions: Session[] }>(`/sessions${status ? `?status=${status}` : ''}`),
     get: (id: string) => fetchJSON<{ session: Session }>(`/sessions/${id}`),
-    create: (data: { project_path: string; task?: string; mode?: 'hivemind' | 'terminal' | 'agent'; agent_type?: string; project_id?: string }) =>
+    create: (data: { project_path: string; task?: string; mode?: 'hivemind' | 'terminal' | 'agent'; agent_type?: string; project_id?: string; cli_type?: 'claude' | 'codex' }) =>
       fetchJSON<{ ok: boolean; session: Session }>('/sessions', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -95,7 +95,7 @@ export const api = {
     rufloStatus: () =>
       fetchJSON<RufloStatusResponse>('/projects/ruflo-status'),
     rufloCheck: (id: string) =>
-      fetchJSON<{ settingsJson: boolean; claudeMd: boolean }>(`/projects/${id}/ruflo-check`),
+      fetchJSON<{ settingsJson: boolean; claudeMd: boolean; agentsMd: boolean }>(`/projects/${id}/ruflo-check`),
     rufloAgents: (id: string) =>
       fetchJSON<{ agents: RufloAgent[] }>(`/projects/${id}/ruflo-agents`),
     rufloInstall: (id: string) =>
@@ -252,6 +252,7 @@ export interface Session {
   completed_at: string | null;
   exit_code: number | null;
   created_at: string;
+  cli_type?: 'claude' | 'codex';
 }
 
 export interface Event {
@@ -325,6 +326,7 @@ export interface RufloProjectStatus {
   installed: boolean;
   version: string | null;
   memoryInitialized: boolean;
+  codexReady?: boolean;
   sonaPatchVersion?: number;
   sonaPatchOutdated?: boolean;
 }
@@ -375,6 +377,7 @@ export interface DiscoverableSession {
   projectPath: string;
   task: string;
   startedAt: string;
+  cliType?: 'claude' | 'codex';
 }
 
 export interface SessionOutput {

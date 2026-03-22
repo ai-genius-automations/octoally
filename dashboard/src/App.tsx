@@ -311,14 +311,15 @@ function Dashboard() {
     saveAppState(activeTab, projectTabs);
   }, [activeTab, projectTabs]);
 
-  function handleOpenProject(projectId: string, projectName: string, quickLaunch?: 'hivemind' | 'agent' | 'terminal') {
+  function handleOpenProject(projectId: string, projectName: string, quickLaunch?: 'hivemind' | 'agent' | 'terminal', cliType?: 'claude' | 'codex') {
     setProjectTabs((prev) => {
       if (prev.find((t) => t.projectId === projectId)) return prev;
       return [...prev, { projectId, projectName }];
     });
     setActiveTab(`project-${projectId}`);
     if (quickLaunch) {
-      setFocusSessionId(`__voice_create_${quickLaunch}`);
+      const suffix = cliType && cliType !== 'claude' ? `_${cliType}` : '';
+      setFocusSessionId(`__voice_create_${quickLaunch}${suffix}`);
     }
   }
 

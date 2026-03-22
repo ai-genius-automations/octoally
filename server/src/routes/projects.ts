@@ -80,10 +80,11 @@ function hasValidMemoryDb(projectPath: string): boolean {
 }
 
 /** Check which config files exist in a project that ruflo init would overwrite */
-function checkRufloConflicts(projectPath: string): { settingsJson: boolean; claudeMd: boolean } {
+function checkRufloConflicts(projectPath: string): { settingsJson: boolean; claudeMd: boolean; agentsMd: boolean } {
   return {
     settingsJson: existsSync(join(projectPath, '.claude', 'settings.json')),
     claudeMd: existsSync(join(projectPath, 'CLAUDE.md')),
+    agentsMd: existsSync(join(projectPath, 'AGENTS.md')),
   };
 }
 
@@ -94,6 +95,7 @@ function backupRufloConflicts(projectPath: string): string[] {
   const files = [
     join(projectPath, '.claude', 'settings.json'),
     join(projectPath, 'CLAUDE.md'),
+    join(projectPath, 'AGENTS.md'),
   ];
   for (const f of files) {
     if (existsSync(f)) {
@@ -263,6 +265,9 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
         const hasClaudeSettings = existsSync(join(p.path, '.claude', 'settings.json'));
         const installed = hasSwarm || hasMemory || hasClaudeFlow || hasClaudeSettings;
 
+        // Detect Codex readiness: AGENTS.md exists (created by ruflo init --codex or --dual)
+        const codexReady = existsSync(join(p.path, 'AGENTS.md'));
+
         // Detect SONA patch version from hook-handler sentinel
         let sonaPatchVersion = 0;
         if (installed) {
@@ -280,13 +285,14 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
           installed,
           version: null,
           memoryInitialized: hasMemory,
+          codexReady,
           sonaPatchVersion,
           sonaPatchOutdated: installed && sonaPatchVersion < CURRENT_SONA_PATCH_VERSION,
         }] as const;
       })
     );
 
-    const statuses: Record<string, { installed: boolean; version: string | null; memoryInitialized: boolean; sonaPatchVersion: number; sonaPatchOutdated: boolean }> = {};
+    const statuses: Record<string, { installed: boolean; version: string | null; memoryInitialized: boolean; codexReady: boolean; sonaPatchVersion: number; sonaPatchOutdated: boolean }> = {};
     for (const [id, status] of entries) {
       statuses[id] = status;
     }
@@ -333,7 +339,8 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       ? { cmd: 'bash', args: (sub: string[]) => [RUFLO_RUN, ...sub] }
       : { cmd: npx, args: (sub: string[]) => ['ruflo@latest', ...sub] };
     try {
-      const result = await execFileAsync(rufloArgs.cmd, rufloArgs.args(['init', '--force']), opts);
+      // Use --dual to set up both Claude (CLAUDE.md) and Codex (AGENTS.md) config
+      const result = await execFileAsync(rufloArgs.cmd, rufloArgs.args(['init', '--force', '--dual']), opts);
       output.push('[ruflo init] ' + (result.stdout || 'done'));
     } catch (err: any) {
       output.push('[error] ' + (err.message || String(err)));

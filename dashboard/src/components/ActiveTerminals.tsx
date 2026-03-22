@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import type { Session, Project } from '../lib/api';
 import { Terminal } from './Terminal';
 import { Monitor, ArrowLeft, ExternalLink, Minimize2, Maximize2, ChevronDown, X, Columns3, Rows3, Zap, Bot, TerminalSquare } from 'lucide-react';
+import { ClaudeIcon, CodexIcon } from './CliIcons';
 
 interface ActiveTerminalsProps {
   onBack: () => void;
@@ -337,13 +338,28 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
                       className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs transition-colors hover:bg-white/5 overflow-hidden"
                       style={{ borderBottom: '1px solid var(--border)' }}
                     >
-                      {session.task === 'Terminal' ? (
-                        <TerminalSquare className="w-3 h-3 shrink-0" style={{ color: '#f59e0b' }} />
-                      ) : session.task.startsWith('Agent (') ? (
-                        <Bot className="w-3 h-3 shrink-0" style={{ color: '#ef4444' }} />
-                      ) : (
-                        <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
-                      )}
+                      {(() => {
+                        const isTerminal = session.task === 'Terminal';
+                        const isAgent = session.task.startsWith('Agent (');
+                        const isCodex = (session as any).cli_type === 'codex';
+                        if (isTerminal) {
+                          return <TerminalSquare className="w-3 h-3 shrink-0" style={{ color: '#f59e0b' }} />;
+                        }
+                        return (
+                          <>
+                            {isCodex ? (
+                              <CodexIcon className="w-3 h-3 shrink-0" style={{ color: '#7A9DFF' }} />
+                            ) : (
+                              <ClaudeIcon className="w-3 h-3 shrink-0" style={{ color: '#D97757' }} />
+                            )}
+                            {isAgent ? (
+                              <Bot className="w-2.5 h-2.5 shrink-0" style={{ color: '#ef4444' }} />
+                            ) : (
+                              <Zap className="w-2.5 h-2.5 shrink-0" style={{ color: '#60a5fa' }} />
+                            )}
+                          </>
+                        );
+                      })()}
                       <span className="font-medium shrink-0" style={{ color: 'var(--text-primary)' }}>
                         {groupLabel}
                       </span>
@@ -407,13 +423,28 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
                     background: isFocused ? '#22c55e30' : 'var(--bg-tertiary)',
                   }}
                 >
-                  {session.task === 'Terminal' ? (
-                    <TerminalSquare className="w-3.5 h-3.5 shrink-0" style={{ color: '#f59e0b' }} />
-                  ) : session.task.startsWith('Agent (') ? (
-                    <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: '#ef4444' }} />
-                  ) : (
-                    <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: '#60a5fa' }} />
-                  )}
+                  {(() => {
+                    const isTerminal = session.task === 'Terminal';
+                    const isAgent = session.task.startsWith('Agent (');
+                    const isCodex = (session as any).cli_type === 'codex';
+                    if (isTerminal) {
+                      return <TerminalSquare className="w-3.5 h-3.5 shrink-0" style={{ color: '#f59e0b' }} />;
+                    }
+                    return (
+                      <>
+                        {isCodex ? (
+                          <CodexIcon className="w-3.5 h-3.5 shrink-0" style={{ color: '#7A9DFF' }} />
+                        ) : (
+                          <ClaudeIcon className="w-3.5 h-3.5 shrink-0" style={{ color: '#D97757' }} />
+                        )}
+                        {isAgent ? (
+                          <Bot className="w-3 h-3 shrink-0" style={{ color: '#ef4444' }} />
+                        ) : (
+                          <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
+                        )}
+                      </>
+                    );
+                  })()}
                   <span className="text-xs font-medium shrink-0" style={{ color: 'var(--text-primary)' }}>
                     {groupLabel}
                   </span>
@@ -477,7 +508,7 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
                       }
                     }}
                   />
-                  <Terminal sessionId={session.id} visible={!expanded} passiveResize={!!expanded || session.task === 'Terminal'} hideCursor={session.task !== 'Terminal'} />
+                  <Terminal sessionId={session.id} visible={!expanded} passiveResize={!!expanded || session.task === 'Terminal'} hideCursor={session.task !== 'Terminal'} cliType={(session as any).cli_type as 'claude' | 'codex' | undefined} onPopOut={() => queryClient.invalidateQueries({ queryKey: ['sessions'] })} />
                 </div>
               </div>
               );
@@ -511,13 +542,28 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
               className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0 rounded-t-lg"
               style={{ borderColor: 'var(--border)', background: 'var(--bg-tertiary)' }}
             >
-              {expanded.session.task === 'Terminal' ? (
-                <TerminalSquare className="w-4 h-4 shrink-0" style={{ color: '#f59e0b' }} />
-              ) : expanded.session.task.startsWith('Agent (') ? (
-                <Bot className="w-4 h-4 shrink-0" style={{ color: '#ef4444' }} />
-              ) : (
-                <Zap className="w-4 h-4 shrink-0" style={{ color: '#60a5fa' }} />
-              )}
+              {(() => {
+                const isTerminal = expanded.session.task === 'Terminal';
+                const isAgent = expanded.session.task.startsWith('Agent (');
+                const isCodex = (expanded.session as any).cli_type === 'codex';
+                if (isTerminal) {
+                  return <TerminalSquare className="w-4 h-4 shrink-0" style={{ color: '#f59e0b' }} />;
+                }
+                return (
+                  <>
+                    {isCodex ? (
+                      <CodexIcon className="w-4 h-4 shrink-0" style={{ color: '#7A9DFF' }} />
+                    ) : (
+                      <ClaudeIcon className="w-4 h-4 shrink-0" style={{ color: '#D97757' }} />
+                    )}
+                    {isAgent ? (
+                      <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: '#ef4444' }} />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: '#60a5fa' }} />
+                    )}
+                  </>
+                );
+              })()}
               <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                 {expanded.groupLabel}
               </span>
@@ -556,7 +602,7 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
             </div>
             {/* Full interactive terminal */}
             <div className="flex-1 min-h-0">
-              <Terminal sessionId={expanded.session.id} visible={true} hideCursor={expanded.session.task !== 'Terminal'} />
+              <Terminal sessionId={expanded.session.id} visible={true} hideCursor={expanded.session.task !== 'Terminal'} cliType={(expanded.session as any).cli_type as 'claude' | 'codex' | undefined} onPopOut={() => { setExpanded(null); queryClient.invalidateQueries({ queryKey: ['sessions'] }); }} />
             </div>
           </div>
         </div>

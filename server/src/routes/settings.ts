@@ -19,6 +19,10 @@ const RUFLO_CMD = existsSync(RUFLO_RUN) ? `bash ${RUFLO_RUN}` : 'npx ruflo@lates
 /** Default values for all settings */
 const DEFAULTS: Record<string, string> = {
   ruflo_command: RUFLO_CMD,
+  hivemind_claude_command: RUFLO_CMD,
+  hivemind_codex_command: RUFLO_CMD,
+  agent_claude_command: RUFLO_CMD,
+  agent_codex_command: RUFLO_CMD,
 };
 
 export function getSetting(key: string): string {

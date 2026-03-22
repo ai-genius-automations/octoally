@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Monitor, FolderTree, Code2, GitBranch, Home, Plus, X, Download, LayoutGrid, Maximize2, Minimize2, ExternalLink, Globe, Zap, Bot, TerminalSquare, Columns3, Rows3, ChevronDown } from 'lucide-react';
+import { ClaudeIcon, CodexIcon } from './CliIcons';
 import { Terminal } from './Terminal';
 import { FileExplorer } from './FileExplorer';
 import { GitPanel } from './GitPanel';
@@ -122,6 +123,12 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
       (s) => s.project_id === projectId && (s.status === 'running' || s.status === 'detached' || s.status === 'pending')
     ),
     [sessionsData, projectId]
+  );
+
+  // Lookup map for session metadata (cli_type, task, etc.) — used in tab rendering
+  const sessionLookup = useMemo(
+    () => new Map(projectSessions.map((s) => [s.id, s])),
+    [projectSessions]
   );
 
   // Initialize from persisted state or defaults
@@ -329,11 +336,12 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
       return;
     }
 
-    // Voice command / quick-launch: create new terminal, hivemind, or agent
-    const createMatch = focusSessionId.match(/^__voice_create_(terminal|hivemind|agent)$/);
+    // Voice command / quick-launch: create new terminal, hivemind, or agent (optionally with cli type)
+    const createMatch = focusSessionId.match(/^__voice_create_(terminal|hivemind|agent)(?:_(claude|codex))?$/);
     if (createMatch) {
       const type = createMatch[1] as 'terminal' | 'hivemind' | 'agent';
-      console.log(`[QuickLaunch] Creating new ${type}`);
+      const cliType = (createMatch[2] as 'claude' | 'codex' | undefined) || 'claude';
+      console.log(`[QuickLaunch] Creating new ${type} (${cliType})`);
       if (type === 'terminal') {
         api.sessions.create({ project_path: projectPath, mode: 'terminal', project_id: projectId })
           .then((data) => {
@@ -355,6 +363,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
           mode: type === 'agent' ? 'agent' : 'hivemind',
           agent_type: type === 'agent' ? 'coder' : undefined,
           project_id: projectId,
+          cli_type: cliType,
         })
           .then((data) => {
             if (data.session?.id) {
@@ -910,13 +919,30 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                         className="flex items-center gap-1.5 pl-3 pr-1 py-1 text-xs font-medium transition-colors"
                         style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
                       >
-                        {inst.label.startsWith('Terminal') ? (
-                          <TerminalSquare className="w-3 h-3 shrink-0" style={{ color: '#f59e0b' }} />
-                        ) : inst.label.startsWith('Agent') ? (
-                          <Bot className="w-3 h-3 shrink-0" style={{ color: '#ef4444' }} />
-                        ) : (
-                          <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
-                        )}
+                        {(() => {
+                          const session = sessionLookup.get(inst.id);
+                          const isTerminal = inst.label.startsWith('Terminal');
+                          const isAgent = inst.label.startsWith('Agent');
+                          const isCodex = session?.cli_type === 'codex';
+                          if (isTerminal) {
+                            return <TerminalSquare className="w-3 h-3 shrink-0" style={{ color: '#f59e0b' }} />;
+                          }
+                          // Show CLI icon + type icon for hivemind/agent
+                          return (
+                            <>
+                              {isCodex ? (
+                                <CodexIcon className="w-3 h-3 shrink-0" style={{ color: '#7A9DFF' }} />
+                              ) : (
+                                <ClaudeIcon className="w-3 h-3 shrink-0" style={{ color: '#D97757' }} />
+                              )}
+                              {isAgent ? (
+                                <Bot className="w-3 h-3 shrink-0" style={{ color: '#ef4444' }} />
+                              ) : (
+                                <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
+                              )}
+                            </>
+                          );
+                        })()}
                         <span className="truncate">{inst.label}</span>
                       </button>
                       <button
@@ -1023,8 +1049,10 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                           {hiddenSessions.map((s: any) => {
                             const isTerminal = s.task === 'Terminal';
                             const isAgent = s.task?.startsWith('Agent (');
-                            const typeLabel = isTerminal ? 'Terminal' : isAgent ? 'Agent' : 'Hivemind';
-                            const typeColor = isTerminal ? '#f59e0b' : isAgent ? '#ef4444' : '#60a5fa';
+                            const isCodex = s.cli_type === 'codex';
+                            const cliLabel = isCodex ? 'Codex' : 'Claude';
+                            const typeLabel = isTerminal ? 'Terminal' : `${cliLabel} ${isAgent ? 'Agent' : 'Hivemind'}`;
+                            const typeColor = isTerminal ? '#f59e0b' : isCodex ? '#10b981' : isAgent ? '#ef4444' : '#60a5fa';
                             return (
                               <button
                                 key={s.id}
@@ -1072,8 +1100,10 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                       ) : (
                         discoverableSessions.map((s) => {
                           const isTerminal = !s.task || s.task === 'Terminal';
-                          const typeLabel = isTerminal ? 'Terminal' : 'Hivemind';
-                          const typeColor = isTerminal ? '#f59e0b' : '#60a5fa';
+                          const isAgent = s.task?.startsWith('Agent (');
+                          const cliLabel = s.cliType === 'codex' ? 'Codex' : s.cliType === 'claude' ? 'Claude' : '';
+                          const typeLabel = isTerminal ? 'Terminal' : `${cliLabel ? cliLabel + ' ' : ''}${isAgent ? 'Agent' : 'Hivemind'}`;
+                          const typeColor = isTerminal ? '#f59e0b' : s.cliType === 'codex' ? '#7A9DFF' : '#60a5fa';
                           return (
                             <button
                               key={s.socketPath}
@@ -1411,7 +1441,29 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                             display: gridMode ? 'flex' : 'none',
                           }}
                         >
-                          <Monitor className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--success)' }} />
+                          {(() => {
+                            const s = sessionLookup.get(term.id);
+                            const isTerminal = term.label.startsWith('Terminal');
+                            const isAgent = term.label.startsWith('Agent');
+                            const isCodex = s?.cli_type === 'codex';
+                            if (isTerminal) {
+                              return <TerminalSquare className="w-3.5 h-3.5 shrink-0" style={{ color: '#f59e0b' }} />;
+                            }
+                            return (
+                              <>
+                                {isCodex ? (
+                                  <CodexIcon className="w-3.5 h-3.5 shrink-0" style={{ color: '#7A9DFF' }} />
+                                ) : (
+                                  <ClaudeIcon className="w-3.5 h-3.5 shrink-0" style={{ color: '#D97757' }} />
+                                )}
+                                {isAgent ? (
+                                  <Bot className="w-3 h-3 shrink-0" style={{ color: '#ef4444' }} />
+                                ) : (
+                                  <Zap className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
+                                )}
+                              </>
+                            );
+                          })()}
                           <span className={`font-medium shrink-0 ${isExpanded ? 'text-sm' : 'text-xs'}`} style={{ color: 'var(--text-primary)' }}>
                             {term.label}
                           </span>
@@ -1477,6 +1529,7 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                               suspended={terminalsSuspended || (!gridMode && !termVisible)}
                               passiveResize={gridMode && !isExpanded && projectSessions.find((s) => s.id === term.id)?.task === 'Terminal'}
                               hideCursor={projectSessions.find((s) => s.id === term.id)?.task !== 'Terminal' && projectSessions.some((s) => s.id === term.id)}
+                              cliType={sessionLookup.get(term.id)?.cli_type as 'claude' | 'codex' | undefined}
                               onReconnect={() => reconnectTerminal(term.id)}
                               onPopOut={() => closeTerminalTab(term.id)}
                             />

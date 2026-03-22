@@ -55,10 +55,12 @@ export const appRouter = router({
         projectPath: z.string(),
         task: z.string().min(1),
         projectId: z.string().optional(),
+        cliType: z.enum(['claude', 'codex']).optional(),
       }))
       .mutation(({ input }) => {
-        const session = sessionManager.createSession(input.projectPath, input.task, input.projectId);
-        sessionManager.spawnClaudeFlow(session.id, input.projectPath, input.task);
+        const cliType = input.cliType || 'claude';
+        const session = sessionManager.createSession(input.projectPath, input.task, input.projectId, cliType);
+        sessionManager.spawnClaudeFlow(session.id, input.projectPath, input.task, 180, 40, cliType);
         return session;
       }),
 

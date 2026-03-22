@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import {
   attachTerminal, writeToSession, resizeSession, reconnectSession,
   getPendingSpawn, consumePendingSpawn, spawnClaudeFlow, spawnTerminal, spawnAdopt, spawnAgent,
+  sendReplay,
 } from '../services/session-manager.js';
 import { getDb } from '../db/index.js';
 
@@ -57,9 +58,9 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
               } else if (info.mode === 'terminal') {
                 await spawnTerminal(sessionId, info.projectPath, msg.cols, msg.rows);
               } else if (info.mode === 'agent' && info.agentType) {
-                await spawnAgent(sessionId, info.projectPath, info.task, info.agentType, msg.cols, msg.rows);
+                await spawnAgent(sessionId, info.projectPath, info.task, info.agentType, msg.cols, msg.rows, info.cliType);
               } else {
-                await spawnClaudeFlow(sessionId, info.projectPath, info.task, msg.cols, msg.rows);
+                await spawnClaudeFlow(sessionId, info.projectPath, info.task, msg.cols, msg.rows, info.cliType);
               }
               const attached = attachTerminal(sessionId, socket);
               if (!attached) {
@@ -121,11 +122,15 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
           socket.close();
           return;
         }
-        // Passive terminals only forward input, never resize
+        // Passive terminals forward input and handle refresh
         socket.on('message', (raw: Buffer | string) => {
           try {
             const msg = JSON.parse(raw.toString());
             if (msg.type === 'input') writeToSession(sessionId, msg.data, msg.paste);
+            else if (msg.type === 'refresh') {
+              console.log(`[REFRESH] ${sessionId}: passive client requested capture-pane refresh`);
+              sendReplay(sessionId, socket, true);
+            }
           } catch { /* ignore */ }
         });
         socket.send(JSON.stringify({ type: 'connected', sessionId }));
@@ -160,6 +165,14 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
 
             case 'resize':
               resizeSession(sessionId, msg.cols, msg.rows);
+              break;
+
+            case 'refresh':
+              // Client requested a fresh display — use tmux capture-pane
+              // to get the current visual state (like adopt does).
+              // This fixes Codex rendering issues without pop-out/re-adopt.
+              console.log(`[REFRESH] ${sessionId}: client requested capture-pane refresh`);
+              sendReplay(sessionId, socket, true);
               break;
           }
         } catch {

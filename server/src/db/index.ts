@@ -100,6 +100,8 @@ export function initDb(): void {
   try { db.exec('ALTER TABLE events ADD COLUMN project_id TEXT REFERENCES projects(id)'); } catch {}
   try { db.exec('ALTER TABLE sessions ADD COLUMN pre_popout_cols INTEGER'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id)'); } catch {}
+  // Codex support: track which CLI (claude or codex) launched the session
+  try { db.exec("ALTER TABLE sessions ADD COLUMN cli_type TEXT DEFAULT 'claude'"); } catch {}
 
   // Note: orphaned process cleanup is handled by cleanupStaleRunningSessions()
   // which is called after initDb() in index.ts — it kills processes AND marks DB records.

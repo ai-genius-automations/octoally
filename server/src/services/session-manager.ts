@@ -134,6 +134,7 @@ interface PendingSpawn {
   agentType?: string;
   projectId?: string;
   socketPath?: string;  // for adopt mode
+  cliType?: 'claude' | 'codex';
 }
 const pendingSpawns = new Map<string, PendingSpawn>();
 
@@ -851,25 +852,29 @@ function forkWorker(): Promise<ChildProcess> {
    Session lifecycle
    ================================================================ */
 
-export function createSession(_projectPath: string, task: string, projectId?: string): Session {
+export function createSession(_projectPath: string, task: string, projectId?: string, cliType?: 'claude' | 'codex'): Session {
   const db = getDb();
   const id = nanoid(12);
 
   db.prepare(`
-    INSERT INTO sessions (id, project_id, task, status)
-    VALUES (?, ?, ?, 'pending')
-  `).run(id, projectId || null, task);
+    INSERT INTO sessions (id, project_id, task, status, cli_type)
+    VALUES (?, ?, ?, 'pending', ?)
+  `).run(id, projectId || null, task, cliType || 'claude');
 
   return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as Session;
 }
 
-export async function spawnClaudeFlow(sessionId: string, projectPath: string, task: string, cols = 180, rows = 40): Promise<void> {
+export async function spawnClaudeFlow(sessionId: string, projectPath: string, task: string, cols = 180, rows = 40, cliType: 'claude' | 'codex' = 'claude'): Promise<void> {
   const preSpawnFiles = snapshotClaudeSessionFiles(projectPath);
 
   const worker = await forkWorker();
   const active = wireWorker(sessionId, worker, projectPath, preSpawnFiles);
   active.cols = cols;
   active.task = task;
+
+  const rufloCommand = cliType === 'codex'
+    ? getSetting('hivemind_codex_command') || getSetting('ruflo_command')
+    : getSetting('hivemind_claude_command') || getSetting('ruflo_command');
 
   // Tell the worker to spawn the session
   worker.send({
@@ -882,7 +887,8 @@ export async function spawnClaudeFlow(sessionId: string, projectPath: string, ta
     rows,
     useTmux: config.useTmux,
     useDtach: config.useDtach,
-    rufloCommand: getSetting('ruflo_command'),
+    rufloCommand,
+    cliType,
   });
 
   insertEvent({
@@ -919,13 +925,17 @@ export async function spawnTerminal(sessionId: string, projectPath: string, cols
   });
 }
 
-export async function spawnAgent(sessionId: string, projectPath: string, task: string, agentType: string, cols = 180, rows = 40): Promise<void> {
+export async function spawnAgent(sessionId: string, projectPath: string, task: string, agentType: string, cols = 180, rows = 40, cliType: 'claude' | 'codex' = 'claude'): Promise<void> {
   const preSpawnFiles = snapshotClaudeSessionFiles(projectPath);
 
   const worker = await forkWorker();
   const active = wireWorker(sessionId, worker, projectPath, preSpawnFiles);
   active.cols = cols;
   active.task = `Agent (${agentType}): ${task}`;
+
+  const rufloCommand = cliType === 'codex'
+    ? getSetting('agent_codex_command') || getSetting('ruflo_command')
+    : getSetting('agent_claude_command') || getSetting('ruflo_command');
 
   worker.send({
     type: 'spawn',
@@ -938,7 +948,8 @@ export async function spawnAgent(sessionId: string, projectPath: string, task: s
     rows,
     useTmux: config.useTmux,
     useDtach: config.useDtach,
-    rufloCommand: getSetting('ruflo_command'),
+    rufloCommand,
+    cliType,
   });
 
   insertEvent({
@@ -1093,10 +1104,31 @@ export const RESIZE_MARKER = '\x00RESIZE:';
 /** Send a replay of the current terminal state to a single WebSocket subscriber.
  *  Uses the in-memory replay buffer for instant replay (raw pipe-pane output).
  *  Falls back to tmux capture-pane only if the buffer is empty (e.g. freshly
- *  reconnected session before pipe-pane data arrives). */
-export function sendReplay(sessionId: string, ws: WebSocket): void {
+ *  reconnected session before pipe-pane data arrives).
+ *
+ *  When `preferCapture` is true, always use tmux capture-pane instead of the raw
+ *  replay buffer. This produces a correct rendering at the current terminal width,
+ *  which is important for TUIs like Codex that use cursor positioning — raw replay
+ *  of chunks recorded at a different width produces garbled output. */
+export function sendReplay(sessionId: string, ws: WebSocket, preferCapture = false): void {
   const active = activeSessions.get(sessionId);
   if (!active) return;
+
+  // When tmux is available and capture is preferred (e.g. after resize),
+  // use capture-pane for a pixel-perfect rendering at the current dimensions.
+  if (preferCapture && config.useTmux) {
+    // Invalidate stale capture cache so we get a fresh capture at new dimensions
+    captureCache.delete(sessionId);
+    tlog(`[REPLAY] ${sessionId}: preferCapture — using tmux capture-pane`);
+    requestCapture(sessionId, ws).catch(() => {
+      // Capture failed — fall back to buffer replay
+      if (active.replayBuffer.length > 0) {
+        const data = '\x1b[H\x1b[2J\x1b[3J' + active.replayBuffer.join('');
+        try { ws.send(JSON.stringify({ type: 'output', sessionId, data })); } catch {}
+      }
+    });
+    return;
+  }
 
   if (active.replayBuffer.length > 0) {
     // Fast path: replay from in-memory buffer (instant, no tmux round-trip)
@@ -1158,7 +1190,7 @@ export function requestCapture(sessionId: string, ws: WebSocket): Promise<void> 
   return new Promise((resolve) => {
     const chunks: string[] = [];
     const proc = spawn('tmux', [
-      ...tmuxArgsForSession(sessionId), 'capture-pane', '-t', name, '-p', '-e', '-T',
+      ...tmuxArgsForSession(sessionId), 'capture-pane', '-t', name, '-p', '-e', '-T', '-S', '-',
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
     proc.stdout!.setEncoding('utf8');
@@ -1833,6 +1865,10 @@ async function resumeCrashedSession(staleSession: Session, projectPath: string):
   `).run(sessionId);
 
   // Tell worker to spawn a hivemind session
+  const sessionCliType = (staleSession as any).cli_type === 'codex' ? 'codex' as const : 'claude' as const;
+  const rufloCommand = sessionCliType === 'codex'
+    ? getSetting('hivemind_codex_command') || getSetting('ruflo_command')
+    : getSetting('hivemind_claude_command') || getSetting('ruflo_command');
   worker.send({
     type: 'spawn',
     sessionId,
@@ -1843,7 +1879,8 @@ async function resumeCrashedSession(staleSession: Session, projectPath: string):
     rows: 40,
     useTmux: config.useTmux,
     useDtach: config.useDtach,
-    rufloCommand: getSetting('ruflo_command'),
+    rufloCommand,
+    cliType: sessionCliType,
   });
 
   // One-shot listener: send /resume when the process is ready for input
@@ -1885,6 +1922,7 @@ export interface DiscoverableSession {
   projectPath: string;
   task: string;
   startedAt: string;
+  cliType?: 'claude' | 'codex';
 }
 
 async function fuserPidsAsync(sockPath: string): Promise<number[]> {
@@ -1957,11 +1995,11 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
   try {
     const db = getDb();
     const releasedSessions = db.prepare(`
-      SELECT s.id, s.task, s.created_at, s.project_id, s.external_socket, COALESCE(p.path, '') as project_path
+      SELECT s.id, s.task, s.created_at, s.project_id, s.external_socket, s.cli_type, COALESCE(p.path, '') as project_path
       FROM sessions s
       LEFT JOIN projects p ON s.project_id = p.id
       WHERE s.status = 'released'
-    `).all() as Array<{ id: string; task: string; created_at: string; project_id: string; external_socket: string | null; project_path: string }>;
+    `).all() as Array<{ id: string; task: string; created_at: string; project_id: string; external_socket: string | null; cli_type: string | null; project_path: string }>;
 
     for (const s of releasedSessions) {
       // Skip if already tracked in activeSessions
@@ -1986,6 +2024,7 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
         projectPath: s.project_path,
         task: s.task,
         startedAt: s.created_at,
+        cliType: (s.cli_type === 'codex' ? 'codex' : 'claude') as 'claude' | 'codex',
       });
     }
   } catch { /* db read failed */ }
