@@ -1,8 +1,27 @@
 {
   "name": "octoally",
   "version": "1.0.7",
-  "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code sessions from a web UI",
+  "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code & OpenAI Codex sessions from a web UI",
   "type": "module",
+  "bin": {
+    "octoally": "cli.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai",
+    "dashboard",
+    "terminal",
+    "orchestration",
+    "multi-agent",
+    "developer-tools",
+    "cli"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:dashboard\"",
     "dev:server": "cd server && npm run dev",
@@ -21,10 +40,10 @@
   },
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
-  "homepage": "https://github.com/ai-genius-automations/octoally",
+  "homepage": "https://octoally.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ai-genius-automations/octoally.git"
+    "url": "git+https://github.com/ai-genius-automations/octoally.git"
   },
   "dependencies": {
     "@xterm/addon-web-links": "^0.12.0"

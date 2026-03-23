@@ -14,6 +14,7 @@
 # Options:
 #   --dry-run    Show what would happen without making changes
 #   --no-push    Commit and tag locally but don't push
+#   --npm        Also publish to npm after pushing
 #   -m "msg"     Custom commit message (version and tag are still auto-set)
 
 set -euo pipefail
@@ -25,6 +26,7 @@ cd "$ROOT"
 
 DRY_RUN=false
 NO_PUSH=false
+NPM_PUBLISH=false
 CUSTOM_MSG=""
 VERSION_ARG=""
 
@@ -32,6 +34,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)  DRY_RUN=true; shift ;;
     --no-push)  NO_PUSH=true; shift ;;
+    --npm)      NPM_PUBLISH=true; shift ;;
     -m)         CUSTOM_MSG="$2"; shift 2 ;;
     -*)         echo "Unknown option: $1"; exit 1 ;;
     *)          VERSION_ARG="$1"; shift ;;
@@ -179,4 +182,12 @@ else
   echo ""
   echo "✓ v${NEW_VERSION} released — GitHub Actions workflow triggered"
   echo "  https://github.com/ai-genius-automations/octoally/actions"
+
+  # --- npm publish (opt-in) ---------------------------------------------------
+  if [ "$NPM_PUBLISH" = true ]; then
+    echo ""
+    echo "Publishing to npm..."
+    npm publish
+    echo "✓ Published octoally@${NEW_VERSION} to npm"
+  fi
 fi
