@@ -241,18 +241,31 @@ if (!isInstalled()) {
 
   // Launch desktop app if installed and not running
   if (process.platform === "linux" && (!args.length || args[0] === "start")) {
+    let desktopRunning = false;
     try {
-      execSync('pgrep -f "octoally-desktop"', { stdio: "pipe" });
-      // Already running — do nothing
-    } catch {
-      // Not running — try to launch if binary exists
-      const desktopBin = ["/usr/bin/octoally-desktop", "/opt/OctoAlly/octoally-desktop"]
-        .find((p) => existsSync(p));
+      execSync('pgrep -x "octoally-desktop"', { stdio: "pipe" });
+      desktopRunning = true;
+    } catch {}
+
+    if (!desktopRunning) {
+      // Find desktop binary
+      let desktopBin = null;
+      try {
+        desktopBin = execSync("which octoally-desktop 2>/dev/null", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+      } catch {}
+      if (!desktopBin) {
+        desktopBin = ["/usr/bin/octoally-desktop", "/opt/OctoAlly/octoally-desktop"]
+          .find((p) => existsSync(p)) || null;
+      }
+
       if (desktopBin) {
+        log(CYAN, "Launching desktop app...");
         try {
           const desktop = spawn(desktopBin, [], { stdio: "ignore", detached: true });
           desktop.unref();
-        } catch {}
+        } catch (err) {
+          log(YELLOW, `Desktop app launch failed: ${err.message}`);
+        }
       }
     }
   }
