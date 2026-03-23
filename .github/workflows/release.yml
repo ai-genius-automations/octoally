@@ -122,20 +122,16 @@ jobs:
           fail_on_unmatched_files: false
 
       # Publish to npm via OIDC trusted publishing (requires npm 11.5.1+)
-      - name: Setup Node for npm publish
-        if: vars.NPM_PUBLISH == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
       - name: Upgrade npm for OIDC support
         if: vars.NPM_PUBLISH == 'true'
         run: npm install -g npm@latest
 
       - name: Publish to npm
         if: vars.NPM_PUBLISH == 'true'
-        run: npm publish --provenance --access public
+        run: |
+          rm -f .npmrc
+          npm config set registry https://registry.npmjs.org/
+          npm publish --provenance --access public
 
       - name: Reset NPM_PUBLISH flag
         if: vars.NPM_PUBLISH == 'true'
