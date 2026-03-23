@@ -222,14 +222,10 @@ if (command === "--update") {
 // ── Not installed → fresh install via install.sh ─────────────────────────────
 
 if (!isInstalled()) {
-  log(YELLOW, "OctoAlly is not installed yet.");
-  if (await promptYesNo("Install OctoAlly?")) {
-    try { runFreshInstall(); } catch (err) {
-      log(RED, `Installation failed: ${err.message}`);
-      process.exit(1);
-    }
-  } else {
-    process.exit(0);
+  log(CYAN, "Installing OctoAlly...");
+  try { runFreshInstall(); } catch (err) {
+    log(RED, `Installation failed: ${err.message}`);
+    process.exit(1);
   }
   if (isInstalled()) {
     launch(args.length ? args : ["start"]);

@@ -525,38 +525,33 @@ log_step 4 "Installing CLI..."
 
 chmod +x "$INSTALL_DIR/bin/octoally"
 
-LINK_DIR="/usr/local/bin"
-if [ ! -w "$LINK_DIR" ]; then
-  # Try with sudo
-  if $SUDO ln -sf "$INSTALL_DIR/bin/octoally" "$LINK_DIR/octoally" 2>/dev/null; then
-    : # success — symlinked to /usr/local/bin
-  else
-    # Fallback to ~/.local/bin and ensure it's in PATH
-    LINK_DIR="$TARGET_HOME/.local/bin"
-    mkdir -p "$LINK_DIR"
-    ln -sf "$INSTALL_DIR/bin/octoally" "$LINK_DIR/octoally"
+# Always install to ~/.local/bin (no sudo needed)
+LINK_DIR="$TARGET_HOME/.local/bin"
+mkdir -p "$LINK_DIR"
+ln -sf "$INSTALL_DIR/bin/octoally" "$LINK_DIR/octoally"
 
-    # Add to PATH if not already there
-    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$LINK_DIR"; then
-      SHELL_RC=""
-      if [ -f "$TARGET_HOME/.bashrc" ]; then
-        SHELL_RC="$TARGET_HOME/.bashrc"
-      elif [ -f "$TARGET_HOME/.zshrc" ]; then
-        SHELL_RC="$TARGET_HOME/.zshrc"
-      elif [ -f "$TARGET_HOME/.profile" ]; then
-        SHELL_RC="$TARGET_HOME/.profile"
-      fi
-      if [ -n "$SHELL_RC" ]; then
-        if ! grep -q '.local/bin' "$SHELL_RC" 2>/dev/null; then
-          echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-          log_info "Added ~/.local/bin to PATH in $(basename "$SHELL_RC")"
-        fi
-      fi
-      export PATH="$LINK_DIR:$PATH"
+# Also symlink to /usr/local/bin if writable (no sudo needed) or if sudo already active
+if [ -w "/usr/local/bin" ]; then
+  ln -sf "$INSTALL_DIR/bin/octoally" "/usr/local/bin/octoally" 2>/dev/null || true
+fi
+
+# Add ~/.local/bin to PATH if not already there
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$LINK_DIR"; then
+  SHELL_RC=""
+  if [ -f "$TARGET_HOME/.bashrc" ]; then
+    SHELL_RC="$TARGET_HOME/.bashrc"
+  elif [ -f "$TARGET_HOME/.zshrc" ]; then
+    SHELL_RC="$TARGET_HOME/.zshrc"
+  elif [ -f "$TARGET_HOME/.profile" ]; then
+    SHELL_RC="$TARGET_HOME/.profile"
+  fi
+  if [ -n "$SHELL_RC" ]; then
+    if ! grep -q '.local/bin' "$SHELL_RC" 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+      log_info "Added ~/.local/bin to PATH in $(basename "$SHELL_RC")"
     fi
   fi
-else
-  ln -sf "$INSTALL_DIR/bin/octoally" "$LINK_DIR/octoally"
+  export PATH="$LINK_DIR:$PATH"
 fi
 
 # Fix ownership if running as root for another user
