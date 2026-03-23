@@ -133,12 +133,31 @@ function runUpdate(version) {
   }
   execSync(`rm -rf "${extractDir}"`, { stdio: "pipe" });
 
-  // Install server dependencies
+  // Install server dependencies (native modules like better-sqlite3)
   log(CYAN, "Installing dependencies...");
   execSync(`npm install --omit=dev --prefix "${INSTALL_DIR}/server"`, {
     cwd: INSTALL_DIR,
     stdio: "inherit",
   });
+
+  // Update desktop app (.deb) if installed
+  try {
+    execSync("dpkg -l octoally-desktop", { stdio: "pipe" });
+    // Desktop app is installed — download and update it
+    const debUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${version}/octoally-desktop_${version}_amd64.deb`;
+    const debFile = `/tmp/octoally-desktop_${version}_amd64.deb`;
+    log(CYAN, "Updating desktop app...");
+    execSync(`curl -fsSL -o "${debFile}" "${debUrl}"`, { stdio: "pipe" });
+    // Kill running desktop app before dpkg replaces the binary
+    try { execSync('pkill -f "octoally-desktop"', { stdio: "pipe" }); } catch {}
+    execSync(`sudo dpkg -i "${debFile}"`, { stdio: "inherit" });
+    execSync(`rm -f "${debFile}"`, { stdio: "pipe" });
+    log(GREEN, "Desktop app updated!");
+    // Relaunch desktop app
+    try { execSync('nohup octoally-desktop &>/dev/null & disown', { stdio: "pipe" }); } catch {}
+  } catch {
+    // Desktop app not installed or .deb not available — skip
+  }
 
   // Start server
   log(CYAN, "Starting server...");
