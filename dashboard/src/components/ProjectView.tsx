@@ -9,7 +9,6 @@ import { GitPanel } from './GitPanel';
 import { SessionLauncher } from './SessionLauncher';
 import { WebPageView } from './WebPageView';
 import { api } from '../lib/api';
-import { DesktopUpdateBanner } from './DesktopUpdateBanner';
 import { CloseTabModal } from './CloseTabModal';
 
 interface ProjectViewProps {
@@ -871,8 +870,6 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
 
       {/* Main content area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Desktop app update banner */}
-        <DesktopUpdateBanner active={active} />
 
         {/* Sub-tab bar */}
         {showSubTabs && (
