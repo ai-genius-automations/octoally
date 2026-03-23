@@ -204,6 +204,21 @@ function runInstallOrUpdate(version) {
   log(CYAN, "Starting server...");
   execSync(`"${LOCAL_CLI}" start`, { cwd: INSTALL_DIR, stdio: "inherit" });
 
+  // Clear stale npx cache so future `npx octoally` (without @latest) uses the new version
+  try {
+    const cacheDir = join(homedir(), ".npm", "_npx");
+    if (existsSync(cacheDir)) {
+      // Find and remove npx cache entries containing octoally
+      const entries = execSync(`find "${cacheDir}" -maxdepth 2 -name "package.json" -exec grep -l '"octoally"' {} \\;`, {
+        encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      }).trim().split("\n").filter(Boolean);
+      for (const pkg of entries) {
+        const dir = join(pkg, "..", "..");
+        execSync(`rm -rf "${dir}"`, { stdio: "pipe" });
+      }
+    }
+  } catch {}
+
   log(GREEN, `OctoAlly v${version} installed!`);
 }
 
