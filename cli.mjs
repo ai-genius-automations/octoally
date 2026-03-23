@@ -78,23 +78,10 @@ async function promptYesNo(question) {
 }
 
 /**
- * Fresh install — use install.sh which handles everything:
- * prerequisites, download, desktop app, service setup, shell function.
+ * Install or update — download pre-built tarball, extract, install deps, setup CLI.
+ * Handles both fresh install and upgrade. No install.sh (avoids signal/loop issues).
  */
-function runFreshInstall() {
-  log(CYAN, "Running OctoAlly installer...\n");
-  execSync(`bash -c "$(curl -fsSL ${INSTALL_SCRIPT_URL})"`, {
-    stdio: "inherit",
-    env: { ...process.env, OCTOALLY_INSTALL_DIR: INSTALL_DIR, __OCTOALLY_NPX_ACTIVE: "1" },
-  });
-}
-
-/**
- * Update existing install — download tarball directly, extract, rebuild.
- * Does NOT use install.sh (avoids recursive loops, signal issues, duplicate prompts).
- * Does NOT stop/start the server — bin/octoally handles that.
- */
-function runUpdate(version) {
+function runInstallOrUpdate(version) {
   const tarballUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${version}/octoally-v${version}.tar.gz`;
   const tmpFile = `/tmp/octoally-v${version}.tar.gz`;
   const extractDir = `/tmp/octoally-extract-${Date.now()}`;
@@ -103,29 +90,21 @@ function runUpdate(version) {
   log(CYAN, `Downloading v${version}...`);
   execSync(`curl -fsSL -o "${tmpFile}" "${tarballUrl}"`, { stdio: "inherit" });
 
-  // Stop server
+  // Stop server if running
   if (existsSync(LOCAL_CLI)) {
-    try {
-      execSync(`"${LOCAL_CLI}" stop`, { cwd: INSTALL_DIR, stdio: "pipe" });
-    } catch {
-      // Server wasn't running — that's fine
-    }
+    try { execSync(`"${LOCAL_CLI}" stop`, { cwd: INSTALL_DIR, stdio: "pipe" }); } catch {}
   }
 
   // Extract
   execSync(`mkdir -p "${extractDir}" && tar xzf "${tmpFile}" -C "${extractDir}"`, { stdio: "pipe" });
   execSync(`rm -f "${tmpFile}"`, { stdio: "pipe" });
 
-  // Find extracted directory
   const extracted = execSync(`ls -d "${extractDir}"/octoally-* 2>/dev/null | head -1`, {
     encoding: "utf8",
   }).trim();
+  if (!extracted) throw new Error("Archive does not contain expected directory");
 
-  if (!extracted) {
-    throw new Error("Archive does not contain expected directory");
-  }
-
-  // Preserve user data
+  // Preserve user data from existing install
   const preserveFiles = ["logs", ".octoally", ".octoally.pid"];
   for (const f of preserveFiles) {
     const src = join(INSTALL_DIR, f);
@@ -134,8 +113,10 @@ function runUpdate(version) {
     }
   }
 
-  // Replace install
-  execSync(`rm -rf "${INSTALL_DIR}"`, { stdio: "pipe" });
+  // Replace install dir
+  if (existsSync(INSTALL_DIR)) {
+    execSync(`rm -rf "${INSTALL_DIR}"`, { stdio: "pipe" });
+  }
   execSync(`mv "${extracted}" "${INSTALL_DIR}"`, { stdio: "pipe" });
 
   // Restore preserved data
@@ -146,6 +127,7 @@ function runUpdate(version) {
     }
   }
   execSync(`rm -rf "${extractDir}"`, { stdio: "pipe" });
+  execSync(`mkdir -p "${INSTALL_DIR}/logs"`, { stdio: "pipe" });
 
   // Install server dependencies (native modules like better-sqlite3)
   log(CYAN, "Installing dependencies...");
@@ -154,46 +136,45 @@ function runUpdate(version) {
     stdio: "inherit",
   });
 
-  // Update desktop app (.deb) if installed
+  // Setup CLI symlink
+  execSync(`chmod +x "${LOCAL_CLI}"`, { stdio: "pipe" });
+  const binDir = join(homedir(), ".local", "bin");
+  execSync(`mkdir -p "${binDir}"`, { stdio: "pipe" });
+  try { execSync(`ln -sf "${LOCAL_CLI}" "${binDir}/octoally"`, { stdio: "pipe" }); } catch {}
+
+  // Desktop app: install/update .deb if available (Linux only)
   try {
-    execSync("dpkg -l octoally-desktop", { stdio: "pipe" });
-    // Desktop app is installed — download and update it
     const debUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${version}/octoally-desktop_${version}_amd64.deb`;
     const debFile = `/tmp/octoally-desktop_${version}_amd64.deb`;
-    log(CYAN, "Updating desktop app...");
-    execSync(`curl -fsSL -o "${debFile}" "${debUrl}"`, { stdio: "pipe" });
-    // Force-kill running desktop app before dpkg replaces the binary
+    // Check if .deb exists on the release
+    execSync(`curl -fsSL --head "${debUrl}" 2>/dev/null | head -1 | grep -q "200"`, { stdio: "pipe" });
+    // Kill old desktop app if running
     try {
       execSync('pkill -9 -f "octoally-desktop"', { stdio: "pipe" });
-      // Wait until process is actually dead
       for (let i = 0; i < 10; i++) {
         try { execSync('pgrep -f "octoally-desktop"', { stdio: "pipe" }); } catch { break; }
         execSync("sleep 0.5", { stdio: "pipe" });
       }
     } catch {}
+    log(CYAN, "Installing desktop app...");
+    execSync(`curl -fsSL -o "${debFile}" "${debUrl}"`, { stdio: "pipe" });
     execSync(`sudo dpkg -i "${debFile}"`, { stdio: "inherit" });
     execSync(`rm -f "${debFile}"`, { stdio: "pipe" });
-    log(GREEN, "Desktop app updated!");
-    // Relaunch desktop app in background (fully detached from terminal)
+    log(GREEN, "Desktop app installed!");
+    // Launch desktop app
     try {
-      const desktop = spawn("octoally-desktop", [], {
-        stdio: "ignore",
-        detached: true,
-      });
+      const desktop = spawn("octoally-desktop", [], { stdio: "ignore", detached: true });
       desktop.unref();
     } catch {}
   } catch {
-    // Desktop app not installed or .deb not available — skip
+    // .deb not available or dpkg failed — skip desktop app
   }
 
   // Start server
   log(CYAN, "Starting server...");
-  execSync(`chmod +x "${LOCAL_CLI}" && "${LOCAL_CLI}" start`, {
-    cwd: INSTALL_DIR,
-    stdio: "inherit",
-  });
+  execSync(`"${LOCAL_CLI}" start`, { cwd: INSTALL_DIR, stdio: "inherit" });
 
-  log(GREEN, `OctoAlly updated to v${version}!`);
+  log(GREEN, `OctoAlly v${version} installed!`);
 }
 
 function launch(args) {
@@ -213,36 +194,30 @@ function launch(args) {
 const args = process.argv.slice(2);
 const command = args[0] || "";
 
-// Explicit --install flag → fresh install via install.sh
-if (command === "--install" || command === "install") {
-  try { runFreshInstall(); } catch (err) {
-    log(RED, `Install failed: ${err.message}`);
-    process.exit(1);
-  }
-  process.exit(0);
-}
-
-// Explicit --update flag
-if (command === "--update") {
+// Explicit --install or --update flag
+if (command === "--install" || command === "install" || command === "--update") {
   const v = getPackageVersion();
   if (!v) { log(RED, "Cannot determine version"); process.exit(1); }
-  try { runUpdate(v); } catch (err) {
-    log(RED, `Update failed: ${err.message}`);
+  try { runInstallOrUpdate(v); } catch (err) {
+    log(RED, `Failed: ${err.message}`);
     process.exit(1);
   }
   process.exit(0);
 }
 
-// ── Not installed → fresh install via install.sh ─────────────────────────────
+// ── Not installed → install ──────────────────────────────────────────────────
 
 if (!isInstalled()) {
-  log(CYAN, "Installing OctoAlly...");
-  try { runFreshInstall(); } catch (err) {
+  const v = getPackageVersion();
+  if (!v) { log(RED, "Cannot determine version"); process.exit(1); }
+  log(CYAN, `Installing OctoAlly v${v}...`);
+  try {
+    runInstallOrUpdate(v);
+    // Server already started by runInstallOrUpdate — exit cleanly
+    process.exit(0);
+  } catch (err) {
     log(RED, `Installation failed: ${err.message}`);
     process.exit(1);
-  }
-  if (isInstalled()) {
-    launch(args.length ? args : ["start"]);
   }
 } else {
   // ── Installed → check for update, then launch ─────────────────────────────
@@ -253,8 +228,8 @@ if (!isInstalled()) {
   if (packageVersion && localVersion && isNewer(packageVersion, localVersion)) {
     log(CYAN, `Updating v${localVersion} → v${packageVersion}...`);
     try {
-      runUpdate(packageVersion);
-      // Server already started by runUpdate — just exit cleanly
+      runInstallOrUpdate(packageVersion);
+      // Server already started — exit cleanly
       process.exit(0);
     } catch (err) {
       log(RED, `Update failed: ${err.message}`);
