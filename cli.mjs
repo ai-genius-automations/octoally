@@ -243,7 +243,7 @@ if (!isInstalled()) {
   if (process.platform === "linux" && (!args.length || args[0] === "start")) {
     let desktopRunning = false;
     try {
-      execSync('pgrep -x "octoally-desktop"', { stdio: "pipe" });
+      execSync('pgrep -f "octoally-desktop"', { stdio: "pipe" });
       desktopRunning = true;
     } catch {}
 
