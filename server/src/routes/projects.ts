@@ -575,7 +575,10 @@ npx @claude-flow/cli memory search \\
     const rufloPrimary = join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo');
     const rufloLegacy = join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo');
     const localRuflo = existsSync(rufloPrimary) ? rufloPrimary : existsSync(rufloLegacy) ? rufloLegacy : null;
+    const staleNpxPattern = /npx\s+(?:@claude-flow\/cli@\S+|claude-flow@\S+)/g;
+    const staleNpxCheck = (s: string) => s.includes('npx @claude-flow/cli') || s.includes('npx claude-flow@');
     if (localRuflo) {
+      // Patch hook shell scripts
       const hookFiles = [
         join(project.path, '.claude', 'hooks', 'session-end.sh'),
         join(project.path, '.claude', 'helpers', 'pre-commit'),
@@ -585,17 +588,28 @@ npx @claude-flow/cli memory search \\
         try {
           if (!existsSync(file)) continue;
           const content = readFileSync(file, 'utf-8');
-          if (!content.includes('npx @claude-flow/cli')) continue;
-          const fixed = content.replace(
-            /npx\s+@claude-flow\/cli@\S+/g,
-            `"${localRuflo}"`
-          );
+          if (!staleNpxCheck(content)) continue;
+          const fixed = content.replace(staleNpxPattern, `"${localRuflo}"`);
           if (fixed !== content) {
             writeFileSync(file, fixed, 'utf-8');
             output.push(`[hooks] Migrated ${file.split('/').pop()} to local ruflo`);
           }
         } catch { /* non-fatal */ }
       }
+      // Patch settings.json hook commands that call stale npx packages
+      const settingsJsonPath = join(project.path, '.claude', 'settings.json');
+      try {
+        if (existsSync(settingsJsonPath)) {
+          const content = readFileSync(settingsJsonPath, 'utf-8');
+          if (staleNpxCheck(content)) {
+            const fixed = content.replace(staleNpxPattern, `"${localRuflo}"`);
+            if (fixed !== content) {
+              writeFileSync(settingsJsonPath, fixed, 'utf-8');
+              output.push('[hooks] Migrated settings.json hook commands to local ruflo');
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
     }
 
     // Patch SONA trajectory learning into ruflo hooks (version-gated, idempotent)

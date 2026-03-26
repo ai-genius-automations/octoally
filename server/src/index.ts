@@ -100,11 +100,15 @@ async function start() {
     const localRuflo = existsSync(rufloPrimary) ? rufloPrimary : existsSync(rufloLegacy) ? rufloLegacy : null;
     let migrated = 0;
 
+    // Match all stale npx package names: @claude-flow/cli@latest, claude-flow@alpha, etc.
+    const staleNpxPattern = /npx\s+(?:@claude-flow\/cli@\S+|claude-flow@\S+)/g;
+    const staleNpxCheck = (s: string) => s.includes('npx @claude-flow/cli') || s.includes('npx claude-flow@');
+
     if (!localRuflo) {
       console.log(`  [hook-migration] No local ruflo binary found (checked ${rufloPrimary} and ${rufloLegacy})`);
     } else {
       for (const { path: projectPath } of projects) {
-        // Check all hook scripts that may reference the stale npx command
+        // 1. Patch hook shell scripts
         const hookFiles = [
           join(projectPath, '.claude', 'hooks', 'session-end.sh'),
           join(projectPath, '.claude', 'helpers', 'pre-commit'),
@@ -114,11 +118,8 @@ async function start() {
           try {
             if (!existsSync(file)) continue;
             const content = readFileSync(file, 'utf-8');
-            if (!content.includes('npx @claude-flow/cli')) continue;
-            const fixed = content.replace(
-              /npx\s+@claude-flow\/cli@\S+/g,
-              `"${localRuflo}"`
-            );
+            if (!staleNpxCheck(content)) continue;
+            const fixed = content.replace(staleNpxPattern, `"${localRuflo}"`);
             if (fixed !== content) {
               writeFileSync(file, fixed, 'utf-8');
               migrated++;
@@ -126,6 +127,23 @@ async function start() {
           } catch (err: any) {
             console.error(`  [hook-migration] Failed to migrate ${file}: ${err.message}`);
           }
+        }
+
+        // 2. Patch settings.json hook commands that call stale npx packages directly
+        const settingsPath = join(projectPath, '.claude', 'settings.json');
+        try {
+          if (existsSync(settingsPath)) {
+            const content = readFileSync(settingsPath, 'utf-8');
+            if (staleNpxCheck(content)) {
+              const fixed = content.replace(staleNpxPattern, `"${localRuflo}"`);
+              if (fixed !== content) {
+                writeFileSync(settingsPath, fixed, 'utf-8');
+                migrated++;
+              }
+            }
+          }
+        } catch (err: any) {
+          console.error(`  [hook-migration] Failed to migrate ${settingsPath}: ${err.message}`);
         }
       }
     }
