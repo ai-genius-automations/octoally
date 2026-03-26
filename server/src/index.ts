@@ -136,13 +136,13 @@ async function start() {
           if (existsSync(settingsPath)) {
             let content = readFileSync(settingsPath, 'utf-8');
             // Repair damage from v1.0.51 which inserted literal quotes inside JSON strings:
-            //   "command": ""/path/to/ruflo" hooks ..."  →  "command": "/path/to/ruflo hooks ..."
-            // Match: ""/path/ruflo"  (spurious quote before path, spurious quote after .bin/ruflo")
-            const badQuotePattern = /""([^"]*\/\.bin\/ruflo)"/g;
-            if (badQuotePattern.test(content)) {
-              content = content.replace(badQuotePattern, '"$1');
+            //   ""/path/.bin/ruflo"  →  /path/.bin/ruflo
+            // The spurious quotes wrap the ruflo path inside a JSON string value.
+            const repaired = content.replace(/"(\/[^"]*\/\.bin\/ruflo)"/g, '$1');
+            if (repaired !== content) {
               try {
-                JSON.parse(content);
+                JSON.parse(repaired);
+                content = repaired;
                 writeFileSync(settingsPath, content, 'utf-8');
                 migrated++;
                 console.log(`  [hook-migration] Repaired malformed JSON in ${settingsPath}`);
