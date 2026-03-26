@@ -94,8 +94,11 @@ async function start() {
   try {
     const db = getDb();
     const projects = db.prepare('SELECT path FROM projects').all() as { path: string }[];
-    const localRuflo = join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo');
-    const hasLocalRuflo = existsSync(localRuflo);
+    // Check both current and legacy ruflo install paths
+    const rufloPrimary = join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo');
+    const rufloLegacy = join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo');
+    const localRuflo = existsSync(rufloPrimary) ? rufloPrimary : existsSync(rufloLegacy) ? rufloLegacy : null;
+    const hasLocalRuflo = localRuflo !== null;
     let migrated = 0;
 
     if (hasLocalRuflo) {

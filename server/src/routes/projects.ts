@@ -572,8 +572,10 @@ npx @claude-flow/cli memory search \\
     // Rewrite stale `npx @claude-flow/cli@latest` references in hook scripts
     // to the local ruflo binary. The npx call downloads on every invocation,
     // causing session stop hooks to hang for 10+ seconds.
-    const localRuflo = join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo');
-    if (existsSync(localRuflo)) {
+    const rufloPrimary = join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo');
+    const rufloLegacy = join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo');
+    const localRuflo = existsSync(rufloPrimary) ? rufloPrimary : existsSync(rufloLegacy) ? rufloLegacy : null;
+    if (localRuflo) {
       const hookFiles = [
         join(project.path, '.claude', 'hooks', 'session-end.sh'),
         join(project.path, '.claude', 'helpers', 'pre-commit'),
