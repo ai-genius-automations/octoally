@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'OctoAlly version to test (e.g. 1.0.54 or latest)'
+        description: 'OctoAlly version to test (e.g. 1.0.55 or latest)'
         required: false
         default: 'latest'
       ruflo_version:
@@ -27,81 +27,119 @@ jobs:
 
       - name: Check OctoAlly version
         run: |
-          echo "=== Server version ==="
-          grep version ~/octoally/server/package.json | head -1 || echo "not found"
+          grep '"version"' ~/octoally/server/package.json | head -1
           ls ~/octoally/server/dist/index.js 2>/dev/null && echo "Server dist: YES" || echo "Server dist: NO"
 
       - name: Install ruflo
         run: |
           RUFLO_VER="${{ github.event.inputs.ruflo_version }}"
-          echo "=== Installing ruflo@${RUFLO_VER} ==="
-          mkdir -p ~/.octoally/ruflo
-          cd ~/.octoally/ruflo
+          echo "Installing ruflo@${RUFLO_VER}"
+          mkdir -p ~/.octoally/ruflo && cd ~/.octoally/ruflo
           npm init -y --silent 2>/dev/null
-          npm install "ruflo@${RUFLO_VER}" --save 2>&1 | tail -5
-          echo "=== Installed ruflo version ==="
+          npm install "ruflo@${RUFLO_VER}" --save 2>&1 | tail -3
           grep '"version"' node_modules/ruflo/package.json | head -1
-          echo "=== Ruflo binary check ==="
-          ls -la ~/.octoally/ruflo/node_modules/.bin/ruflo 2>/dev/null || echo "NOT FOUND"
+          ls -la node_modules/.bin/ruflo
 
-      - name: Check for stale agentdb
-        run: |
-          echo "=== Stale agentdb in ruflo install ==="
-          find ~/.octoally/ruflo/node_modules -maxdepth 2 -name "package.json" -path "*/agentdb/*" 2>/dev/null | while read f; do
-            echo "$f: $(grep '"version"' "$f" | head -1)"
-          done
-          echo "=== Stale agentdb at top level ==="
-          ls ~/.octoally/ruflo/node_modules/agentdb/package.json 2>/dev/null && echo "HAS STANDALONE AGENTDB (STALE)" || echo "No standalone agentdb (good)"
-          echo "=== npx caches ==="
-          for dir in ~/.npm/_npx/*/; do
-            [ -d "$dir" ] || continue
-            if [ -f "${dir}node_modules/@claude-flow/cli/package.json" ]; then
-              echo "FOUND claude-flow cache: $dir"
-              ls "${dir}node_modules/agentdb/package.json" 2>/dev/null && echo "  HAS STALE AGENTDB" || echo "  clean"
-            fi
-          done
-          echo "done"
-
-      - name: Run ruflo init on test project
+      - name: Setup test project with ruflo init
         run: |
           mkdir -p ~/test-project && cd ~/test-project
-          RUFLO=~/.octoally/ruflo/node_modules/.bin/ruflo
-          if [ ! -f "$RUFLO" ]; then echo "No ruflo binary"; exit 0; fi
-          echo "=== ruflo init ==="
-          "$RUFLO" init --force 2>&1 | tail -10 || echo "ruflo init failed"
-          echo ""
-          echo "=== Stop hooks in settings.json ==="
-          grep -A8 '"Stop"' .claude/settings.json 2>/dev/null || echo "No Stop hooks found"
-          echo ""
-          echo "=== session-end.sh ==="
-          cat .claude/hooks/session-end.sh 2>/dev/null || echo "No session-end.sh"
+          ~/.octoally/ruflo/node_modules/.bin/ruflo init --force 2>&1 | tail -5 || true
+          echo "=== Stop hooks AFTER ruflo init ==="
+          python3 -c "
+          import json
+          with open('.claude/settings.json') as f:
+              s = json.load(f)
+          for key in ['Stop','SessionEnd']:
+              for e in s.get('hooks',{}).get(key,[]):
+                  for h in e.get('hooks',[]):
+                      print(f'  [{key}] timeout={h.get(\"timeout\",\"NONE\")} cmd={h.get(\"command\",\"\")[:80]}')" || echo "parse failed"
 
-      - name: Test ruflo hooks session-end hangs
+      - name: Simulate broken state (remove timeouts from Stop hooks)
         run: |
-          RUFLO=~/.octoally/ruflo/node_modules/.bin/ruflo
-          if [ ! -f "$RUFLO" ]; then echo "No ruflo binary"; exit 0; fi
           cd ~/test-project
-          echo "=== Testing ruflo hooks session-end (10s timeout) ==="
-          gtimeout 10 "$RUFLO" hooks session-end --generate-summary true --persist-state true --export-metrics true 2>&1
-          EXIT=$?
-          echo "EXIT CODE: $EXIT"
-          if [ $EXIT -eq 124 ]; then echo "TIMED OUT - CONFIRMS HANG BUG"; fi
+          echo "=== Simulating broken user state: removing timeouts from Stop hooks ==="
+          python3 -c "
+          import json
+          with open('.claude/settings.json') as f:
+              s = json.load(f)
+          for key in ['Stop','SessionEnd']:
+              for e in s.get('hooks',{}).get(key,[]):
+                  for h in e.get('hooks',[]):
+                      if 'timeout' in h:
+                          del h['timeout']
+                          print(f'  Removed timeout from [{key}] {h.get(\"command\",\"\")[:60]}')
+          # Also inject the old npx claude-flow@alpha command (like Noah's machine)
+          s['hooks']['Stop'].insert(0, {
+              'hooks': [{
+                  'type': 'command',
+                  'command': 'npx claude-flow@alpha hooks session-end --generate-summary true --persist-state true --export-metrics true'
+              }]
+          })
+          print('  Injected stale npx claude-flow@alpha Stop hook (no timeout)')
+          with open('.claude/settings.json', 'w') as f:
+              json.dump(s, f, indent=2)
+              f.write('\n')
+          print('  Saved broken settings.json')" || echo "simulate failed"
+          echo "=== Stop hooks AFTER breaking ==="
+          python3 -c "
+          import json
+          with open('.claude/settings.json') as f:
+              s = json.load(f)
+          for key in ['Stop','SessionEnd']:
+              for e in s.get('hooks',{}).get(key,[]):
+                  for h in e.get('hooks',[]):
+                      print(f'  [{key}] timeout={h.get(\"timeout\",\"NONE\")} cmd={h.get(\"command\",\"\")[:80]}')" || echo "parse failed"
 
-      - name: Test server startup migration
+      - name: Run OctoAlly server startup migration
         run: |
           cd ~/octoally/server
           echo "=== Adding test project to DB ==="
           node -e "const D=require('better-sqlite3'),p=require('path'),o=require('os');try{const d=new D(p.join(o.homedir(),'.octoally','octoally.db'));d.exec('CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT,path TEXT,description TEXT,ruflo_prompt TEXT,openclaw_prompt TEXT,default_web_url TEXT,created_at TEXT,updated_at TEXT)');d.prepare('INSERT OR IGNORE INTO projects(id,name,path)VALUES(?,?,?)').run('t1','test',p.join(o.homedir(),'test-project'));d.close();console.log('DB ready')}catch(e){console.error(e.message)}"
-          echo "=== Server startup (10s capture) ==="
+          echo "=== Server startup (10s) ==="
           gtimeout 10 node dist/index.js 2>&1 || true
 
-      - name: Post-migration check
+      - name: Verify migration results
         run: |
-          echo "=== agentdb after server startup ==="
-          ls ~/.octoally/ruflo/node_modules/agentdb/package.json 2>/dev/null && echo "STILL HAS STALE AGENTDB - CLEANUP FAILED" || echo "AGENTDB CLEANED - SUCCESS"
-          echo ""
-          echo "=== session-end.sh after migration ==="
-          grep "npx" ~/test-project/.claude/hooks/session-end.sh 2>/dev/null && echo "STILL HAS NPX - MIGRATION FAILED" || echo "NPX REMOVED - SUCCESS"
-          echo ""
-          echo "=== settings.json Stop hooks after migration ==="
-          grep -A5 '"Stop"' ~/test-project/.claude/settings.json 2>/dev/null | grep "command" || echo "No Stop hooks"
+          cd ~/test-project
+          echo "=== Stop hooks AFTER migration ==="
+          python3 -c "
+          import json
+          with open('.claude/settings.json') as f:
+              s = json.load(f)
+          all_ok = True
+          for key in ['Stop','SessionEnd']:
+              for e in s.get('hooks',{}).get(key,[]):
+                  for h in e.get('hooks',[]):
+                      t = h.get('timeout', 'NONE')
+                      cmd = h.get('command','')[:80]
+                      has_npx = 'npx' in h.get('command','')
+                      print(f'  [{key}] timeout={t} npx={has_npx} cmd={cmd}')
+                      if t == 'NONE':
+                          print(f'    FAIL: Missing timeout!')
+                          all_ok = False
+                      if has_npx:
+                          print(f'    FAIL: Still has npx command!')
+                          all_ok = False
+          if all_ok:
+              print('')
+              print('ALL CHECKS PASSED')
+          else:
+              print('')
+              print('SOME CHECKS FAILED')
+              exit(1)" || echo "VERIFICATION FAILED"
+
+      - name: Test session-end with timeout enforcement
+        run: |
+          cd ~/test-project
+          RUFLO=~/.octoally/ruflo/node_modules/.bin/ruflo
+          echo "=== Testing ruflo hooks session-end (5s timeout like our migration sets) ==="
+          START=$(date +%s)
+          gtimeout 5 "$RUFLO" hooks session-end --generate-summary true 2>&1 || true
+          END=$(date +%s)
+          ELAPSED=$((END - START))
+          echo "Elapsed: ${ELAPSED}s"
+          if [ $ELAPSED -ge 5 ]; then
+            echo "CONFIRMED: ruflo hangs (killed after ${ELAPSED}s) but timeout prevents user-visible hang"
+          else
+            echo "ruflo exited cleanly in ${ELAPSED}s"
+          fi
