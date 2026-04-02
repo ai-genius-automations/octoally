@@ -117,11 +117,16 @@ function migrateSettingsHookPaths(projectPath: string): string | null {
 }
 
 /** Shared ruflo-run.sh — created by DevCortex installer, shared with OctoAlly.
- *  Falls back to npx if the script doesn't exist (no DevCortex installed). */
+ *  Falls back to local binary, then npx if neither exists (no DevCortex installed). */
 const RUFLO_RUN = existsSync(join(homedir(), '.octoally', 'ruflo-run.sh'))
   ? join(homedir(), '.octoally', 'ruflo-run.sh')
   : join(homedir(), '.hivecommand', 'ruflo-run.sh');
 const HAS_RUFLO_RUN = existsSync(RUFLO_RUN);
+const RUFLO_LOCAL_BIN = existsSync(join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo'))
+  ? join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo')
+  : existsSync(join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo'))
+    ? join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo')
+    : null;
 
 /** SONA patch script — patches ruflo's hook-handler.cjs with trajectory learning.
  *  Ships in this repo (scripts/patch-sona.sh) so all devs get it.
@@ -446,7 +451,9 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
     // Use shared ruflo-run.sh if available (fast), otherwise fall back to npx
     const rufloArgs = HAS_RUFLO_RUN
       ? { cmd: 'bash', args: (sub: string[]) => [RUFLO_RUN, ...sub] }
-      : { cmd: npx, args: (sub: string[]) => ['ruflo@latest', ...sub] };
+      : RUFLO_LOCAL_BIN
+        ? { cmd: RUFLO_LOCAL_BIN, args: (sub: string[]) => sub }
+        : { cmd: npx, args: (sub: string[]) => ['ruflo@latest', ...sub] };
     try {
       // Use --force (Claude-only) to get the full detailed CLAUDE.md config.
       // We create AGENTS.md separately below — using --dual would overwrite
@@ -591,7 +598,9 @@ npx @claude-flow/cli memory search \\
     try {
       const mcpCmd = HAS_RUFLO_RUN
         ? ['mcp', 'add', 'ruflo', '--', 'bash', RUFLO_RUN]
-        : ['mcp', 'add', 'ruflo', '--', 'npx', '-y', 'ruflo@latest'];
+        : RUFLO_LOCAL_BIN
+          ? ['mcp', 'add', 'ruflo', '--', RUFLO_LOCAL_BIN]
+          : ['mcp', 'add', 'ruflo', '--', 'npx', '-y', 'ruflo@latest'];
       await execFileAsync('claude', mcpCmd, { ...opts, timeout: 30_000 });
       output.push('[mcp] Registered ruflo as Claude Code MCP server');
     } catch (err: any) {

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Mic, MicOff, Loader2, RotateCcw, ExternalLink } from 'lucide-react';
+import { Mic, MicOff, Loader2, RotateCcw, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react';
 import { useSpeechStore, toggleMic, stopMic } from '../lib/speech';
 import { api } from '../lib/api';
 import { HistoryViewer } from './HistoryViewer';
@@ -156,6 +157,14 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [connected, setConnected] = useState(false);
+
+  // Read terminal font size from settings
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.settings.get(),
+    staleTime: 30_000,
+  });
+  const configuredFontSize = Number(settingsData?.settings?.terminal_font_size) || 13;
   const [showHistory, setShowHistory] = useState(false);
 
   // Expose connect/disconnect so the suspension effect can control it
@@ -181,7 +190,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       cursorStyle: hideCursor ? 'bar' : 'block',
       cursorWidth: hideCursor ? 1 : undefined,
       cursorInactiveStyle: hideCursor ? 'none' : 'outline',
-      fontSize: 13,
+      fontSize: configuredFontSize,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       scrollback: 10000,
       allowProposedApi: true,
@@ -509,6 +518,19 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
               cols: term.cols,
               rows: term.rows,
             }));
+            // Force PTY redraw via SIGWINCH toggle
+            const cols = term.cols;
+            const rows = term.rows;
+            setTimeout(() => {
+              if (w.readyState === WebSocket.OPEN) {
+                w.send(JSON.stringify({ type: 'resize', cols: cols - 1, rows }));
+                setTimeout(() => {
+                  if (w.readyState === WebSocket.OPEN) {
+                    w.send(JSON.stringify({ type: 'resize', cols, rows }));
+                  }
+                }, 50);
+              }
+            }, 50);
           } else {
             // WS not open yet — send when it connects
             pendingResize = true;
@@ -612,6 +634,26 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       setTimeout(() => connectFnRef.current?.(), 50);
     }
   }, [passiveResize, suspended]);
+
+  // Update font size when setting changes (without recreating the terminal)
+  useEffect(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    const w = wsRef.current;
+    if (!term) return;
+    if (term.options.fontSize !== configuredFontSize) {
+      term.options.fontSize = configuredFontSize;
+      fit?.fit();
+      // Notify PTY of new dimensions and force redraw via SIGWINCH toggle
+      if (w && w.readyState === WebSocket.OPEN) {
+        w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        setTimeout(() => {
+          w.send(JSON.stringify({ type: 'resize', cols: term.cols - 1, rows: term.rows }));
+          setTimeout(() => w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })), 50);
+        }, 50);
+      }
+    }
+  }, [configuredFontSize]);
 
   // Reactively hide/show the xterm.js cursor when hideCursor prop changes
   // (e.g. when session data loads after mount)
@@ -785,6 +827,57 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         {connected && !suspended && (
           <>
             <TerminalMicButton wsRef={wsRef} termRef={termRef} />
+            <button
+              onClick={() => {
+                const term = termRef.current;
+                const fit = fitRef.current;
+                const w = wsRef.current;
+                if (!term) return;
+                const current = term.options.fontSize || 13;
+                if (current > 6) {
+                  term.options.fontSize = current - 1;
+                  fit?.fit();
+                  if (w && w.readyState === WebSocket.OPEN) {
+                    w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+                    // Force PTY redraw via SIGWINCH toggle
+                    setTimeout(() => {
+                      w.send(JSON.stringify({ type: 'resize', cols: term.cols - 1, rows: term.rows }));
+                      setTimeout(() => w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })), 50);
+                    }, 50);
+                  }
+                }
+              }}
+              className="flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-all opacity-70 hover:!opacity-100"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+              title="Zoom out"
+            >
+              <ZoomOut className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => {
+                const term = termRef.current;
+                const fit = fitRef.current;
+                const w = wsRef.current;
+                if (!term) return;
+                const current = term.options.fontSize || 13;
+                if (current < 32) {
+                  term.options.fontSize = current + 1;
+                  fit?.fit();
+                  if (w && w.readyState === WebSocket.OPEN) {
+                    w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+                    setTimeout(() => {
+                      w.send(JSON.stringify({ type: 'resize', cols: term.cols - 1, rows: term.rows }));
+                      setTimeout(() => w.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })), 50);
+                    }, 50);
+                  }
+                }
+              }}
+              className="flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-all opacity-70 hover:!opacity-100"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+              title="Zoom in"
+            >
+              <ZoomIn className="w-3 h-3" />
+            </button>
             <button
               onClick={async () => {
                 try {

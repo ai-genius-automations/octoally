@@ -19,6 +19,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--app-font-size, 13px);
 }
 
 /* Global interactive element styles */

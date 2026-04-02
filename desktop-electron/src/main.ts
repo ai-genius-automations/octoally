@@ -1,8 +1,8 @@
-import { app, BrowserWindow, Menu, shell, ipcMain, session, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, shell, ipcMain, session, globalShortcut, dialog } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import { resolveCliPath, isServerReachable, startServer, waitForServer } from './server-manager';
-import { createTray } from './tray';
+import { createTray, destroyTray } from './tray';
 import { registerSpeechHandlers } from './speech';
 
 let mainWindow: BrowserWindow | null = null;
@@ -127,17 +127,35 @@ function createWindow() {
     }
   });
 
-  // Close-to-tray: hide window instead of quitting.
-  // When actually quitting (tray → Quit, or app.exit), force-kill after 2s
-  // if the renderer is unresponsive (e.g. server is dead, webview stuck).
+  // On close: ask user whether to minimize to tray or quit
   mainWindow.on('close', (event) => {
-    if (!(app as any).isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
-    } else {
+    if ((app as any).isQuitting) {
       // Force quit after 2s if renderer doesn't cooperate
       setTimeout(() => app.exit(0), 2000);
+      return;
     }
+
+    event.preventDefault();
+
+    const choice = dialog.showMessageBoxSync(mainWindow!, {
+      type: 'question',
+      buttons: ['Minimize to Tray', 'Quit', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      title: 'OctoAlly',
+      message: 'What would you like to do?',
+      detail: 'Minimize to tray keeps the server running in the background.',
+    });
+
+    if (choice === 0) {
+      // Minimize to tray
+      mainWindow?.hide();
+    } else if (choice === 1) {
+      // Quit
+      (app as any).isQuitting = true;
+      app.quit();
+    }
+    // choice === 2 (Cancel): do nothing
   });
 }
 
@@ -152,6 +170,7 @@ function showWindow() {
 (app as any).isQuitting = false;
 app.on('before-quit', () => {
   (app as any).isQuitting = true;
+  destroyTray();
 });
 
 app.whenReady().then(async () => {
@@ -187,6 +206,31 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray({ cliPath, showWindow });
+
+  // Watch for server death and auto-restart it (handles /api/restart and crashes)
+  let serverWatchdog: ReturnType<typeof setInterval> | null = null;
+  let restarting = false;
+  serverWatchdog = setInterval(async () => {
+    if (restarting) return;
+    const alive = await isServerReachable();
+    if (!alive) {
+      restarting = true;
+      console.log('[OctoAlly] Server not reachable, restarting...');
+      await startServer(cliPath);
+      const ok = await waitForServer(15000);
+      if (ok) {
+        console.log('[OctoAlly] Server restarted successfully');
+        mainWindow?.webContents.reload();
+      } else {
+        console.warn('[OctoAlly] Server failed to restart');
+      }
+      restarting = false;
+    }
+  }, 3000);
+
+  app.on('before-quit', () => {
+    if (serverWatchdog) clearInterval(serverWatchdog);
+  });
 
   // Grant permissions for webview sessions (WebAuthn, notifications, etc.)
   const webpageSession = session.fromPartition('persist:webpages');

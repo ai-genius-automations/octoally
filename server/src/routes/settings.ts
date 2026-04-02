@@ -5,16 +5,24 @@ import { existsSync } from 'fs';
 import { getDb } from '../db/index.js';
 
 /**
- * Shared ruflo-run.sh location: ~/.octoally/ruflo-run.sh
- * Created/updated by the DevCortex installer. Keeps a local ruflo install
- * at ~/.octoally/ruflo/ and only downloads when a newer version exists.
- * Falls back to ~/.hivecommand/ruflo-run.sh for backward compatibility,
- * then to npx if neither script exists (no DevCortex installed).
+ * Resolve the ruflo command in priority order:
+ * 1. ruflo-run.sh (created by DevCortex installer) — fastest, no npm overhead
+ * 2. Local ruflo binary at ~/.octoally/ruflo/ — installed by ruflo-install endpoint
+ * 3. npx ruflo@latest — slowest fallback, prompts for install if not cached
  */
 const RUFLO_RUN = existsSync(join(homedir(), '.octoally', 'ruflo-run.sh'))
   ? join(homedir(), '.octoally', 'ruflo-run.sh')
   : join(homedir(), '.hivecommand', 'ruflo-run.sh');
-const RUFLO_CMD = existsSync(RUFLO_RUN) ? `bash ${RUFLO_RUN}` : 'npx ruflo@latest';
+const RUFLO_LOCAL_BIN = existsSync(join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo'))
+  ? join(homedir(), '.octoally', 'ruflo', 'node_modules', '.bin', 'ruflo')
+  : existsSync(join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo'))
+    ? join(homedir(), '.hivecommand', 'ruflo', 'node_modules', '.bin', 'ruflo')
+    : null;
+const RUFLO_CMD = existsSync(RUFLO_RUN)
+  ? `bash ${RUFLO_RUN}`
+  : RUFLO_LOCAL_BIN
+    ? RUFLO_LOCAL_BIN
+    : 'npx ruflo@latest';
 
 /** Default values for all settings */
 const DEFAULTS: Record<string, string> = {
@@ -23,6 +31,9 @@ const DEFAULTS: Record<string, string> = {
   hivemind_codex_command: RUFLO_CMD,
   agent_claude_command: RUFLO_CMD,
   agent_codex_command: RUFLO_CMD,
+  terminal_font_size: '13',
+  app_font_size: '13',
+  server_port: '42010',
 };
 
 export function getSetting(key: string): string {

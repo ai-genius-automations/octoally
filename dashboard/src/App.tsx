@@ -72,6 +72,19 @@ function Dashboard() {
     });
   });
 
+  // Apply saved app font size on load
+  const { data: appSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.settings.get(),
+    staleTime: 30_000,
+  });
+  useEffect(() => {
+    const size = appSettings?.settings?.app_font_size;
+    if (size) {
+      document.documentElement.style.setProperty('--app-font-size', `${size}px`);
+    }
+  }, [appSettings]);
+
   // Track hidden session IDs reported by each ProjectView
   const hiddenSessionIdsRef = useRef<Map<string, string[]>>(new Map());
   const [hiddenSessionIds, setHiddenSessionIds] = useState<string[]>([]);

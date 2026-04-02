@@ -31,7 +31,8 @@
     "build:dashboard": "cd dashboard && npm run build",
     "start": "cd server && npm start",
     "install:all": "npm install && cd server && npm install && cd ../dashboard && npm install",
-    "clean": "cd server && rm -rf dist && cd ../dashboard && rm -rf dist"
+    "clean": "cd server && rm -rf dist && cd ../dashboard && rm -rf dist",
+    "deploy": "bash scripts/deploy-dev.sh"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

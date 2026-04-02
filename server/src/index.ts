@@ -1,6 +1,12 @@
 // Increase libuv thread pool for async execFile / fs operations
 process.env.UV_THREADPOOL_SIZE = '16';
 
+// Enrich PATH for desktop-launched environments (task manager, dock, app menu).
+// Interactive shells load nvm/fnm/volta via .bashrc/.zshrc, but desktop-launched
+// processes inherit the bare session environment which typically lacks these.
+import { enrichProcessPath } from './utils/enrich-path.js';
+enrichProcessPath();
+
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -93,6 +99,18 @@ async function start() {
   let t = Date.now();
   initDb();
   tlog(`[STARTUP] initDb: ${Date.now() - t}ms`);
+
+  // Override port from settings DB if not set via env var
+  if (!process.env.PORT) {
+    try {
+      const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('server_port') as { value: string } | undefined;
+      if (row?.value) {
+        const parsed = parseInt(row.value, 10);
+        if (parsed > 0 && parsed < 65536) config.port = parsed;
+      }
+    } catch {}
+  }
+
   t = Date.now();
   await initProjects();
   tlog(`[STARTUP] initProjects: ${Date.now() - t}ms`);
@@ -402,6 +420,28 @@ async function start() {
       reconnectTotal: reconnect.total,
       reconnectDone: reconnect.done,
     };
+  });
+
+  // Restart server — exits the process so the parent (CLI/systemd/Electron) can relaunch
+  app.post('/api/restart', async () => {
+    setTimeout(() => process.exit(0), 500);
+    return { ok: true, message: 'Server restarting...' };
+  });
+
+  // Network info — returns local IP addresses for the settings UI hint
+  app.get('/api/network-info', async () => {
+    const { networkInterfaces } = await import('os');
+    const nets = networkInterfaces();
+    const addresses: string[] = [];
+    for (const iface of Object.values(nets)) {
+      if (!iface) continue;
+      for (const net of iface) {
+        if (!net.internal && net.family === 'IPv4') {
+          addresses.push(net.address);
+        }
+      }
+    }
+    return { addresses, port: config.port };
   });
 
   // Serve dashboard in production

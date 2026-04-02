@@ -278,7 +278,7 @@ export function ModelSettingsModal({ onClose }: ModelSettingsModalProps) {
 
         {/* Body */}
         {activeTab === 'speech' ? (
-        <div className="px-5 py-3 space-y-3">
+        <div className="px-5 py-3 space-y-3" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
           {/* Backend toggle */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             <button

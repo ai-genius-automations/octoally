@@ -25,6 +25,12 @@ interface TrayOptions {
 }
 
 export function createTray(opts: TrayOptions): Tray {
+  // Destroy existing tray to prevent duplicates on relaunch
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
   // Resolve icon path — try development location first, then packaged
   const iconPaths = [
     path.join(__dirname, '..', 'icons', 'tray-icon.png'),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { X, Settings, Check, Loader2, Zap, Bot } from 'lucide-react';
+import { X, Settings, Check, Loader2, Zap, Bot, Type, Globe, RotateCcw } from 'lucide-react';
 import { ClaudeIcon, CodexIcon } from './CliIcons';
 
 interface SettingsModalProps {
@@ -52,11 +52,18 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     queryKey: ['settings'],
     queryFn: () => api.settings.get(),
   });
+  const { data: networkData } = useQuery({
+    queryKey: ['network-info'],
+    queryFn: () => fetch('/api/network-info').then((r) => r.json()) as Promise<{ addresses: string[]; port: number }>,
+  });
 
   const [hivemindClaudeCmd, setHivemindClaudeCmd] = useState('');
   const [hivemindCodexCmd, setHivemindCodexCmd] = useState('');
   const [agentClaudeCmd, setAgentClaudeCmd] = useState('');
   const [agentCodexCmd, setAgentCodexCmd] = useState('');
+  const [fontSize, setFontSize] = useState('13');
+  const [appFontSize, setAppFontSize] = useState('13');
+  const [serverPort, setServerPort] = useState('42010');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -67,6 +74,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setHivemindCodexCmd(s.hivemind_codex_command || s.ruflo_command || '');
       setAgentClaudeCmd(s.agent_claude_command || s.ruflo_command || '');
       setAgentCodexCmd(s.agent_codex_command || s.ruflo_command || '');
+      setFontSize(s.terminal_font_size || '13');
+      setAppFontSize(s.app_font_size || '13');
+      setServerPort(s.server_port || '42010');
     }
   }, [data]);
 
@@ -94,6 +104,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       hivemind_codex_command: hivemindCodexCmd,
       agent_claude_command: agentClaudeCmd,
       agent_codex_command: agentCodexCmd,
+      terminal_font_size: fontSize,
+      app_font_size: appFontSize,
+      server_port: serverPort,
     });
   }
 
@@ -135,7 +148,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-6 overflow-y-auto">
+        <div className="px-6 py-5 space-y-6 overflow-y-auto" style={{ maxHeight: '60vh' }}>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--text-secondary)' }} />
@@ -197,6 +210,133 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                     onChange={setAgentCodexCmd}
                     placeholder="bash ~/.octoally/ruflo-run.sh"
                   />
+                </div>
+              </div>
+
+              {/* Server */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4" style={{ color: '#22c55e' }} />
+                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Server
+                  </h4>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Port for the OctoAlly server. Changes take effect on restart.
+                </p>
+                <div className="space-y-2 pl-1">
+                  <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                    Port
+                  </label>
+                  <input
+                    type="number"
+                    min="1024"
+                    max="65535"
+                    value={serverPort}
+                    onChange={(e) => setServerPort(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm"
+                    style={{
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border)',
+                      outline: 'none',
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                  />
+                  {networkData?.addresses && networkData.addresses.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {networkData.addresses.map((ip) => (
+                        <span
+                          key={ip}
+                          className="px-2 py-0.5 rounded text-xs font-mono"
+                          style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                        >
+                          http://{ip}:{serverPort}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        await fetch('/api/restart', { method: 'POST' });
+                      } catch {}
+                    }}
+                    className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+                    style={{ background: 'var(--warning)', color: '#000' }}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Restart Server
+                  </button>
+                </div>
+              </div>
+
+              {/* Appearance */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Type className="w-4 h-4" style={{ color: '#a855f7' }} />
+                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Appearance
+                  </h4>
+                </div>
+                <div className="space-y-4 pl-1">
+                  {/* App Font Size */}
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                      <span>App Font Size</span>
+                      <span
+                        className="px-2 py-0.5 rounded text-xs tabular-nums"
+                        style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
+                      >
+                        {appFontSize}px
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="20"
+                      step="1"
+                      value={appFontSize}
+                      onChange={(e) => {
+                        setAppFontSize(e.target.value);
+                        document.documentElement.style.setProperty('--app-font-size', `${e.target.value}px`);
+                      }}
+                      className="w-full accent-purple-500"
+                      style={{ height: '4px' }}
+                    />
+                    <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+                      <span>10</span>
+                      <span>20</span>
+                    </div>
+                  </div>
+
+                  {/* Terminal Font Size */}
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                      <span>Terminal Font Size</span>
+                      <span
+                        className="px-2 py-0.5 rounded text-xs tabular-nums"
+                        style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
+                      >
+                        {fontSize}px
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min="8"
+                      max="24"
+                      step="1"
+                      value={fontSize}
+                      onChange={(e) => setFontSize(e.target.value)}
+                      className="w-full accent-purple-500"
+                      style={{ height: '4px' }}
+                    />
+                    <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+                      <span>8</span>
+                      <span>24</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>

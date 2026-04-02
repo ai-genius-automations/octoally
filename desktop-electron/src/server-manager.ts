@@ -73,6 +73,9 @@ export function isServerReachable(): Promise<boolean> {
  * when the app is launched from a desktop environment (e.g. task manager, dock).
  * Interactive shells load nvm/fnm/volta via .bashrc/.zshrc, but desktop-launched
  * processes inherit the bare session environment which typically lacks these.
+ *
+ * NOTE: duplicated from server/src/utils/enrich-path.ts because Electron and
+ * the server are separate build targets that cannot share modules at runtime.
  */
 function buildNodeAwarePath(): string {
   const currentPath = process.env.PATH || '';
@@ -87,7 +90,6 @@ function buildNodeAwarePath(): string {
       const versions = fs.readdirSync(nvmVersionsDir)
         .filter((d) => d.startsWith('v'))
         .sort((a, b) => {
-          // Simple semver compare: v22.21.1 > v20.10.0
           const pa = a.slice(1).split('.').map(Number);
           const pb = b.slice(1).split('.').map(Number);
           for (let i = 0; i < 3; i++) {
