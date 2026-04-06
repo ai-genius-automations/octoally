@@ -95,7 +95,7 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
     const features = [];
     const integrations = [];
 
-    const nexusRoot = process.env.ALETHEIA_NEXUS_PATH || '/home/hemang/ALETHEIA-NEXUS';
+    const nexusRoot = process.env.ALETHEIA_NEXUS_PATH || join(homedir(), 'ALETHEIA-NEXUS');
 
     // Check RAG status
     const ragStore = `${nexusRoot}/config/rag_store`;
