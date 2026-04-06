@@ -12,6 +12,7 @@ import { getSetting } from '../routes/settings.js';
 import { nanoid } from 'nanoid';
 import type { WebSocket } from 'ws';
 import { getOrCreateTracker, removeTracker, recoverFromBuffer } from './session-state.js';
+import { fireNotificationHook } from '../routes/hooks.js';
 
 const nodeRequire = createRequire(import.meta.url);
 const { Terminal: HeadlessTerminal } = nodeRequire('@xterm/headless') as { Terminal: any };
@@ -735,6 +736,28 @@ function wireWorker(sessionId: string, worker: ChildProcess, projectPath?: strin
           type: 'session_end',
           data: { exitCode: msg.exitCode, signal: msg.signal },
         });
+
+        // Fire session_complete notification hook (fire-and-forget)
+        try {
+          fireNotificationHook({
+            type: 'session_complete',
+            session_id: sessionId,
+            detail: { status, exitCode: msg.exitCode, signal: msg.signal ?? null },
+            timestamp: new Date().toISOString(),
+          }).catch(() => { /* non-fatal */ });
+        } catch { /* non-fatal */ }
+
+        // Fire error_spike if the session failed (non-zero exit)
+        if (msg.exitCode !== 0) {
+          try {
+            fireNotificationHook({
+              type: 'error_spike',
+              session_id: sessionId,
+              detail: { exitCode: msg.exitCode, signal: msg.signal ?? null, reason: 'session_failed' },
+              timestamp: new Date().toISOString(),
+            }).catch(() => { /* non-fatal */ });
+          } catch { /* non-fatal */ }
+        }
 
         const taskSnippet = (() => {
           try { return (getDb().prepare('SELECT task FROM sessions WHERE id = ?').get(sessionId) as any)?.task?.slice(0, 60) ?? ''; } catch { return ''; }
@@ -1466,6 +1489,19 @@ export async function killSession(sessionId: string): Promise<boolean> {
   `).run(sessionId);
 
   console.log(`[KILL] Session ${sessionId} killed (db_updated=${result.changes > 0})`);
+
+  // Fire session_complete notification hook for cancelled sessions (fire-and-forget)
+  if (!!active || result.changes > 0) {
+    try {
+      fireNotificationHook({
+        type: 'session_complete',
+        session_id: sessionId,
+        detail: { status: 'cancelled', exitCode: -1, reason: 'killed' },
+        timestamp: new Date().toISOString(),
+      }).catch(() => { /* non-fatal */ });
+    } catch { /* non-fatal */ }
+  }
+
   return !!active || result.changes > 0;
 }
 
@@ -2333,6 +2369,16 @@ export function registerCapacityWake(sessionId: string, callback: () => void): v
     callback,
   });
 
+  // Fire rate_limit notification hook (fire-and-forget)
+  try {
+    fireNotificationHook({
+      type: 'rate_limit',
+      session_id: sessionId,
+      detail: { reason: 'capacity_exhausted', pollingIntervalMs: WAKE_POLL_INTERVAL },
+      timestamp: new Date().toISOString(),
+    }).catch(() => { /* non-fatal */ });
+  } catch { /* non-fatal */ }
+
   if (!wakePollerActive) {
     startWakePoller();
   }
@@ -2472,14 +2518,33 @@ export function checkPermission(sessionId: string, toolName: string): boolean {
 
   // Check denied first (deny always wins over allow)
   if (grant.deniedTools.some(d => toolName.startsWith(d) || d === toolName)) {
+    try {
+      fireNotificationHook({
+        type: 'tool_denied',
+        session_id: sessionId,
+        detail: { tool: toolName, reason: 'explicitly_denied', parentId: grant.parentId },
+        timestamp: new Date().toISOString(),
+      }).catch(() => { /* non-fatal */ });
+    } catch { /* non-fatal */ }
     return false;
   }
 
   // If allowed list is empty, everything not denied is allowed
   if (grant.allowedTools.length === 0) return true;
 
-  // Check allowed list
-  return grant.allowedTools.some(a => toolName.startsWith(a) || a === toolName);
+  // Check allowed list — if not in the allowed list, deny
+  const allowed = grant.allowedTools.some(a => toolName.startsWith(a) || a === toolName);
+  if (!allowed) {
+    try {
+      fireNotificationHook({
+        type: 'tool_denied',
+        session_id: sessionId,
+        detail: { tool: toolName, reason: 'not_in_allowlist', parentId: grant.parentId },
+        timestamp: new Date().toISOString(),
+      }).catch(() => { /* non-fatal */ });
+    } catch { /* non-fatal */ }
+  }
+  return allowed;
 }
 
 /**

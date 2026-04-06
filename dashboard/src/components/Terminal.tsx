@@ -327,12 +327,29 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     // Send user input to server
     // Filter out xterm.js focus reporting sequences (\x1b[I = focus in, \x1b[O = focus out)
     // These get sent when terminal gains/loses focus and Claude Code's TUI interprets them as input
+    let lineBuffer = '';
     term.onData((data: string) => {
       if (data === '\x1b[I' || data === '\x1b[O') return;
       const w = wsRef.current;
       if (w && w.readyState === WebSocket.OPEN) {
         w.send(JSON.stringify({ type: 'input', data }));
       }
+      // Track line buffer for skill suggestion bar
+      if (data === '\r' || data === '\n') {
+        lineBuffer = '';
+      } else if (data === '\x7f' || data === '\b') {
+        lineBuffer = lineBuffer.slice(0, -1);
+      } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+        lineBuffer += data;
+      } else if (data.startsWith('\x1b')) {
+        // Escape sequence (arrow keys, etc.) — don't modify buffer
+      } else if (data.length > 1) {
+        // Pasted text
+        lineBuffer += data;
+      }
+      window.dispatchEvent(new CustomEvent('octoally:input-buffer', {
+        detail: { buffer: lineBuffer },
+      }));
     });
 
     term.onBinary((data: string) => {
@@ -677,6 +694,25 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       term.options.cursorInactiveStyle = 'outline';
     }
   }, [hideCursor]);
+
+  // Listen for skill-invoke events from the Skills Panel / Command Palette.
+  // Only the visible, non-suspended terminal acts on these.
+  // detail.execute defaults to true; when false, text is typed without Enter.
+  useEffect(() => {
+    if (!visible || suspended) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const command = detail?.command;
+      if (!command || typeof command !== 'string') return;
+      const w = wsRef.current;
+      if (w && w.readyState === WebSocket.OPEN) {
+        const execute = detail?.execute !== false;
+        w.send(JSON.stringify({ type: 'input', data: execute ? command + '\r' : command }));
+      }
+    };
+    window.addEventListener('octoally:skill-invoke', handler);
+    return () => window.removeEventListener('octoally:skill-invoke', handler);
+  }, [visible, suspended]);
 
   // Re-focus and refit terminal when it becomes visible.
   // Single RAF + short delay ensures DOM layout is settled before measuring.

@@ -25,6 +25,10 @@ import { gitRoutes } from './routes/git.js';
 import { agentRoutes } from './routes/agent.js';
 import { settingsRoutes } from './routes/settings.js';
 import { hooksRoutes } from './routes/hooks.js';
+import { skillsRoutes } from './routes/skills.js';
+import { skillSuggestRoutes } from './routes/skill-suggest.js';
+import { magicDocsRoutes } from './routes/magic-docs.js';
+import { permissionsRoutes } from './routes/permissions.js';
 import { appRouter } from './trpc/router.js';
 import {
   fastifyTRPCPlugin,
@@ -33,7 +37,7 @@ import {
 import type { AppRouter } from './trpc/router.js';
 import { killAllSessions, cleanupStaleRunningSessions, autoReconnectDetachedSessions, getReconnectStatus, startPendingSessionWatchdog } from './services/session-manager.js';
 import { config } from './config.js';
-import { appendFileSync, writeFileSync, readdirSync, existsSync, readFileSync, rmSync } from 'fs';
+import { appendFileSync, writeFileSync, readdirSync, existsSync, readFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 const tlog = (s: string) => { try { appendFileSync('/tmp/octoally-timing.log', `[${new Date().toISOString()}] ${s}\n`); } catch {} };
@@ -50,6 +54,34 @@ setInterval(() => {
     tlog(`[LAG] Event loop blocked for ${lag}ms`);
   }
 }, 50).unref();
+
+// --- Plugin loader: scans ~/.octoally/plugins/*/index.js ---
+async function loadPlugins(app: import('fastify').FastifyInstance) {
+  const pluginsDir = join(homedir(), '.octoally', 'plugins');
+  if (!existsSync(pluginsDir)) { mkdirSync(pluginsDir, { recursive: true }); return; }
+  const manifests: any[] = [];
+  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const pluginEntry = join(pluginsDir, entry.name, 'index.js');
+    const manifestPath = join(pluginsDir, entry.name, 'manifest.json');
+    // Collect manifest if present
+    if (existsSync(manifestPath)) {
+      try { manifests.push(JSON.parse(readFileSync(manifestPath, 'utf-8'))); } catch {}
+    }
+    if (!existsSync(pluginEntry)) continue;
+    try {
+      const mod = await import(pluginEntry);
+      if (typeof mod.default === 'function') {
+        await app.register(mod.default, { prefix: `/api/plugins/${entry.name}` });
+        console.log(`  [plugin] Loaded: ${entry.name}`);
+      }
+    } catch (err: any) {
+      console.error(`  [plugin] Failed to load ${entry.name}: ${err.message}`);
+    }
+  }
+  // Serve collected manifests
+  app.get('/api/plugins/manifests', async () => manifests);
+}
 
 async function start() {
   const app = Fastify({
@@ -259,6 +291,14 @@ async function start() {
         return;
       }
 
+      // Plugin routes are served inside an authenticated dashboard iframe —
+      // the user already passed auth to reach the dashboard.  Plugin
+      // endpoints expose read-only telemetry/search, so exempting them
+      // avoids the need to inject Bearer tokens into panel HTML.
+      if (req.url.startsWith('/api/plugins/')) {
+        return;
+      }
+
       // WebSocket upgrade: check token in query param ?token=
       const isUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
       if (isUpgrade) {
@@ -297,6 +337,11 @@ async function start() {
   await app.register(agentRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
   await app.register(hooksRoutes, { prefix: '/api' });
+  await app.register(skillsRoutes, { prefix: '/api' });
+  await app.register(skillSuggestRoutes, { prefix: '/api' });
+  await app.register(magicDocsRoutes, { prefix: '/api' });
+  await app.register(permissionsRoutes, { prefix: '/api' });
+  await loadPlugins(app);
 
   // tRPC
   await app.register(fastifyTRPCPlugin, {
