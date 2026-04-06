@@ -2420,7 +2420,7 @@ function startWakePoller(): void {
       const result = execFileSync('python3', ['-m', 'src.backend_health'], {
         timeout: 5000,
         encoding: 'utf-8',
-        cwd: '/home/hemang/ALETHEIA-NEXUS',
+        cwd: process.env.ALETHEIA_NEXUS_PATH || join(homedir(), 'ALETHEIA-NEXUS'),
       });
 
       // If health check succeeds and reports usable, wake all listeners

@@ -6,6 +6,8 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 export interface PromptSuggestion {
   text: string;
@@ -64,7 +66,8 @@ let toolRegistryCache: ToolEntry[] | null = null;
 function loadToolRegistry(): ToolEntry[] {
   if (toolRegistryCache) return toolRegistryCache;
 
-  const registryPath = '/home/hemang/ALETHEIA-NEXUS/config/tool_registry.json';
+  const nexusRoot = process.env.ALETHEIA_NEXUS_PATH || join(homedir(), 'ALETHEIA-NEXUS');
+  const registryPath = join(nexusRoot, 'config', 'tool_registry.json');
   try {
     if (existsSync(registryPath)) {
       const data = JSON.parse(readFileSync(registryPath, 'utf-8'));
