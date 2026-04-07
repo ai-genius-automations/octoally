@@ -10,6 +10,9 @@ import { SessionLauncher } from './SessionLauncher';
 import { WebPageView } from './WebPageView';
 import { api } from '../lib/api';
 import { CloseTabModal } from './CloseTabModal';
+import { SkillsPanel } from './SkillsPanel';
+import { CommandPalette } from './CommandPalette';
+import { SkillSuggestBar } from './SkillSuggestBar';
 
 interface ProjectViewProps {
   projectId: string;
@@ -41,7 +44,7 @@ interface WebPageInstance {
   url: string;
 }
 
-type ActiveMode = 'terminal' | 'explorer' | 'events' | 'git';
+type ActiveMode = 'terminal' | 'explorer' | 'events' | 'git' | 'skills';
 
 interface PersistedState {
   activeMode: ActiveMode;
@@ -99,6 +102,7 @@ const sidebarButtons = [
   { id: 'terminal' as const, icon: Monitor, title: 'Terminal' },
   { id: 'explorer' as const, icon: FolderTree, title: 'File Explorer' },
   { id: 'git' as const, icon: GitBranch, title: 'Source Control' },
+  { id: 'skills' as const, icon: Zap, title: 'Skills' },
 ] as const;
 
 export function ProjectView({ projectId, projectPath, projectName: _projectName, active = true, terminalsSuspended = false, focusSessionId, onFocusSessionHandled, onHiddenSessionsChange }: ProjectViewProps) {
@@ -822,7 +826,8 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
   const gridHiddenCount = hiddenSessions.length;
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex flex-col">
+    <div className="flex flex-1 min-h-0">
       {/* Icon sidebar */}
       <div
         className="flex flex-col items-center py-2 gap-1 shrink-0"
@@ -1580,7 +1585,14 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
             </div>
           ))}
 
-          {/* Events panel */}
+          {/* Skills panel */}
+          <div
+            className="h-full absolute inset-0"
+            style={{ display: activeMode === 'skills' ? 'block' : 'none' }}
+          >
+            <SkillsPanel projectId={projectId} projectPath={projectPath} />
+          </div>
+
           {/* Git panel */}
           <div
             className="h-full absolute inset-0"
@@ -1607,6 +1619,12 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
           onCancel={() => setCloseConfirm(null)}
         />
       )}
+
+      {/* Command Palette (Ctrl+K) */}
+      <CommandPalette projectPath={projectPath} />
+    </div>
+    {/* Live Skill Suggestion Bar */}
+    <SkillSuggestBar projectPath={projectPath} projectId={projectId} />
     </div>
   );
 }

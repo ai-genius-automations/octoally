@@ -89,3 +89,76 @@ export function getEvents(options?: {
 
   return db.prepare(`SELECT * FROM events ${where} ORDER BY id DESC LIMIT ?`).all(...params, limit) as Event[];
 }
+
+// ─── Transcript Management ──────────────────────────────────────
+
+export interface TranscriptEntry {
+  id: number;
+  session_id: string;
+  seq: number;
+  role: string;
+  content: string | null;
+  tool_name: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  timestamp: string;
+}
+
+export function appendTranscript(entry: {
+  session_id: string;
+  seq: number;
+  role: string;
+  content?: string;
+  tool_name?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+}): TranscriptEntry {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO transcripts (session_id, seq, role, content, tool_name, tokens_in, tokens_out, cost_usd)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(
+    entry.session_id,
+    entry.seq,
+    entry.role,
+    entry.content || null,
+    entry.tool_name || null,
+    entry.tokens_in || 0,
+    entry.tokens_out || 0,
+    entry.cost_usd || 0
+  );
+  return db.prepare('SELECT * FROM transcripts WHERE id = ?').get(result.lastInsertRowid) as TranscriptEntry;
+}
+
+export function getTranscript(session_id: string, options?: { limit?: number; offset?: number }): TranscriptEntry[] {
+  const db = getDb();
+  const limit = options?.limit || 1000;
+  const offset = options?.offset || 0;
+  return db.prepare(
+    'SELECT * FROM transcripts WHERE session_id = ? ORDER BY seq ASC LIMIT ? OFFSET ?'
+  ).all(session_id, limit, offset) as TranscriptEntry[];
+}
+
+export function compactTranscript(session_id: string, keepLast: number = 50): number {
+  const db = getDb();
+  const maxSeq = db.prepare(
+    'SELECT MAX(seq) as max_seq FROM transcripts WHERE session_id = ?'
+  ).get(session_id) as { max_seq: number | null };
+
+  if (!maxSeq?.max_seq || maxSeq.max_seq <= keepLast) return 0;
+
+  const cutoff = maxSeq.max_seq - keepLast;
+  const result = db.prepare(
+    'DELETE FROM transcripts WHERE session_id = ? AND seq <= ?'
+  ).run(session_id, cutoff);
+  return result.changes;
+}
+
+export function flushTranscript(session_id: string): number {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM transcripts WHERE session_id = ?').run(session_id);
+  return result.changes;
+}

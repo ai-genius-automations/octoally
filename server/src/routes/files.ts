@@ -2,12 +2,35 @@ import { FastifyPluginAsync } from 'fastify';
 import { readdir, stat, readFile, writeFile } from 'fs/promises';
 import { join, resolve, extname } from 'path';
 import { exec } from 'child_process';
+import { getDb } from '../db/index.js';
 
 interface FileEntry {
   name: string;
   type: 'file' | 'directory';
   size: number;
   extension: string;
+}
+
+/**
+ * Validate that a resolved path is within one of the registered project directories.
+ * Returns true if the path is allowed, false if it's outside all project dirs.
+ */
+function isPathAllowed(resolvedPath: string): boolean {
+  try {
+    const db = getDb();
+    const projects = db.prepare('SELECT path FROM projects').all() as { path: string }[];
+    for (const { path: projectPath } of projects) {
+      const normalizedProject = resolve(projectPath);
+      // Path must be the project dir itself or a descendant
+      if (resolvedPath === normalizedProject || resolvedPath.startsWith(normalizedProject + '/')) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    // If DB is unavailable, deny by default
+    return false;
+  }
 }
 
 export const fileRoutes: FastifyPluginAsync = async (app) => {
@@ -20,6 +43,10 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
     const showHidden = req.query.showHidden === 'true';
 
     const resolved = resolve(dirPath);
+
+    if (!isPathAllowed(resolved)) {
+      return reply.status(403).send({ error: 'Access denied: path is outside registered project directories' });
+    }
 
     try {
       const entries = await readdir(resolved, { withFileTypes: true });
@@ -68,6 +95,10 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
 
     const resolved = resolve(filePath);
 
+    if (!isPathAllowed(resolved)) {
+      return reply.status(403).send({ error: 'Access denied: path is outside registered project directories' });
+    }
+
     try {
       const stats = await stat(resolved);
       // Limit to 1MB files
@@ -95,6 +126,10 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
 
     const resolved = resolve(filePath);
 
+    if (!isPathAllowed(resolved)) {
+      return reply.status(403).send({ error: 'Access denied: path is outside registered project directories' });
+    }
+
     try {
       // Verify file exists (won't create new files)
       await stat(resolved);
@@ -116,6 +151,10 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
 
     const resolvedA = resolve(pathA);
     const resolvedB = resolve(pathB);
+
+    if (!isPathAllowed(resolvedA) || !isPathAllowed(resolvedB)) {
+      return reply.status(403).send({ error: 'Access denied: path is outside registered project directories' });
+    }
 
     // Verify both files exist
     try { await stat(resolvedA); } catch { return reply.status(404).send({ error: `File not found: ${pathA}` }); }
@@ -156,6 +195,10 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
     if (!path) return reply.status(400).send({ error: 'path is required' });
 
     const resolved = resolve(path);
+
+    if (!isPathAllowed(resolved)) {
+      return reply.status(403).send({ error: 'Access denied: path is outside registered project directories' });
+    }
 
     return new Promise((resolvePromise) => {
       exec(`code "${resolved}"`, (err) => {

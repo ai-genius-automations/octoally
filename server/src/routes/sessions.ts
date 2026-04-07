@@ -9,6 +9,7 @@ import * as sessionManager from '../services/session-manager.js';
 import { RESIZE_MARKER, registerPendingSpawn, getSessionTmuxServer } from '../services/session-manager.js';
 import { getTracker } from '../services/session-state.js';
 import { getDb } from '../db/index.js';
+import { getTranscript, getEvents } from '../services/event-store.js';
 
 export const sessionRoutes: FastifyPluginAsync = async (app) => {
   // List sessions
@@ -127,6 +128,49 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       } catch { /* ignore */ }
     }
     return { ok: true };
+  });
+
+  // Session replay — ordered transcript with timing
+  app.get<{
+    Params: { id: string };
+    Querystring: { limit?: string; offset?: string };
+  }>('/sessions/:id/replay', async (req, reply) => {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 1000;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const transcript = getTranscript(id, { limit, offset });
+
+      if (transcript.length === 0) {
+        // Fall back to events if no transcript entries
+        const events = getEvents({ session_id: id, limit });
+        return {
+          ok: true,
+          session_id: id,
+          type: 'events_fallback',
+          entries: events.map((e, i) => ({
+            seq: i + 1,
+            role: e.type === 'tool_use' ? 'tool_use' : e.type === 'tool_result' ? 'tool_result' : 'system',
+            content: e.data,
+            tool_name: e.tool_name,
+            timestamp: e.timestamp,
+          })),
+          total: events.length,
+        };
+      }
+
+      return {
+        ok: true,
+        session_id: id,
+        type: 'transcript',
+        entries: transcript,
+        total: transcript.length,
+      };
+    } catch (err) {
+      reply.status(500);
+      return { ok: false, error: String(err) };
+    }
   });
 
   // Concise context summary for cross-session awareness (low token cost)

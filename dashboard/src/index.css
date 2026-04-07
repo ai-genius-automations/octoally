@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
-:root {
+/* ─── Default Dark (OctoAlly default) ─────────────────────────────────────── */
+:root,
+[data-theme="default"] {
   --bg-primary: #0f1117;
   --bg-secondary: #1a1d27;
   --bg-tertiary: #242833;
@@ -12,6 +14,123 @@
   --success: #22c55e;
   --warning: #eab308;
   --error: #ef4444;
+}
+
+/* ─── Cyberpunk ────────────────────────────────────────────────────────────── */
+[data-theme="cyberpunk"] {
+  --bg-primary: #050a0e;
+  --bg-secondary: #0d1a20;
+  --bg-tertiary: #162530;
+  --border: #1e3a45;
+  --text-primary: #e0f7f4;
+  --text-secondary: #7ab8b0;
+  --accent: #00ffcc;
+  --accent-hover: #00ccaa;
+  --success: #39ff14;
+  --warning: #ffcc00;
+  --error: #ff2d55;
+}
+
+/* ─── Nord ─────────────────────────────────────────────────────────────────── */
+[data-theme="nord"] {
+  --bg-primary: #2e3440;
+  --bg-secondary: #3b4252;
+  --bg-tertiary: #434c5e;
+  --border: #4c566a;
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --accent: #88c0d0;
+  --accent-hover: #81a1c1;
+  --success: #a3be8c;
+  --warning: #ebcb8b;
+  --error: #bf616a;
+}
+
+/* ─── Solarized Dark ───────────────────────────────────────────────────────── */
+[data-theme="solarized"] {
+  --bg-primary: #002b36;
+  --bg-secondary: #073642;
+  --bg-tertiary: #0e4552;
+  --border: #184f5a;
+  --text-primary: #fdf6e3;
+  --text-secondary: #93a1a1;
+  --accent: #2aa198;
+  --accent-hover: #248f88;
+  --success: #859900;
+  --warning: #b58900;
+  --error: #dc322f;
+}
+
+/* ─── Dracula ──────────────────────────────────────────────────────────────── */
+[data-theme="dracula"] {
+  --bg-primary: #282a36;
+  --bg-secondary: #343746;
+  --bg-tertiary: #3e4155;
+  --border: #44475a;
+  --text-primary: #f8f8f2;
+  --text-secondary: #6272a4;
+  --accent: #bd93f9;
+  --accent-hover: #a87ef7;
+  --success: #50fa7b;
+  --warning: #f1fa8c;
+  --error: #ff5555;
+}
+
+/* ─── Monokai Pro ──────────────────────────────────────────────────────────── */
+[data-theme="monokai"] {
+  --bg-primary: #272822;
+  --bg-secondary: #2d2e27;
+  --bg-tertiary: #35362e;
+  --border: #49483e;
+  --text-primary: #f8f8f2;
+  --text-secondary: #75715e;
+  --accent: #a6e22e;
+  --accent-hover: #8fcc22;
+  --success: #a6e22e;
+  --warning: #e6db74;
+  --error: #f92672;
+}
+
+/* ─── Light ────────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-primary: #f7f8fa;
+  --bg-secondary: #eef0f4;
+  --bg-tertiary: #e3e6ed;
+  --border: #d0d5e0;
+  --text-primary: #1a1d27;
+  --text-secondary: #5a6278;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --error: #cf222e;
+}
+
+/* ─── Sunset ───────────────────────────────────────────────────────────────── */
+[data-theme="sunset"] {
+  --bg-primary: #1a1015;
+  --bg-secondary: #251820;
+  --bg-tertiary: #30202c;
+  --border: #3d2835;
+  --text-primary: #f5e6e0;
+  --text-secondary: #a8847c;
+  --accent: #ff9e64;
+  --accent-hover: #e8884d;
+  --success: #a9dc76;
+  --warning: #ffd866;
+  --error: #ff6188;
+}
+
+/* ─── Theme transitions ────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
+/* Exempt transitions on elements where animation would be jarring */
+.xterm-screen, .xterm-rows, .xterm-viewport, canvas {
+  transition: none !important;
 }
 
 body {

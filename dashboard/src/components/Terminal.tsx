@@ -259,13 +259,19 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       fitAddon.fit();
     });
 
-    // Intercept Ctrl+Shift+C to copy selection
+    // Intercept Ctrl+C: copy selection if text is selected, otherwise send SIGINT
+    // Also keep Ctrl+Shift+C for backward compat
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
+      if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'c' || e.key === 'C') && e.type === 'keydown') {
         const sel = term.getSelection();
-        if (sel) navigator.clipboard.writeText(sel);
-        e.preventDefault();
-        return false;
+        if (sel) {
+          navigator.clipboard.writeText(sel);
+          term.clearSelection();
+          e.preventDefault();
+          return false;
+        }
+        // No selection — let xterm send SIGINT (^C) as normal
+        if (!e.shiftKey) return true;
       }
       // Ctrl+Shift+V: read clipboard explicitly and send as input.
       // Can't rely on browser firing a paste event — synthetic keystrokes
@@ -321,12 +327,29 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     // Send user input to server
     // Filter out xterm.js focus reporting sequences (\x1b[I = focus in, \x1b[O = focus out)
     // These get sent when terminal gains/loses focus and Claude Code's TUI interprets them as input
+    let lineBuffer = '';
     term.onData((data: string) => {
       if (data === '\x1b[I' || data === '\x1b[O') return;
       const w = wsRef.current;
       if (w && w.readyState === WebSocket.OPEN) {
         w.send(JSON.stringify({ type: 'input', data }));
       }
+      // Track line buffer for skill suggestion bar
+      if (data === '\r' || data === '\n') {
+        lineBuffer = '';
+      } else if (data === '\x7f' || data === '\b') {
+        lineBuffer = lineBuffer.slice(0, -1);
+      } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+        lineBuffer += data;
+      } else if (data.startsWith('\x1b')) {
+        // Escape sequence (arrow keys, etc.) — don't modify buffer
+      } else if (data.length > 1) {
+        // Pasted text
+        lineBuffer += data;
+      }
+      window.dispatchEvent(new CustomEvent('octoally:input-buffer', {
+        detail: { buffer: lineBuffer },
+      }));
     });
 
     term.onBinary((data: string) => {
@@ -671,6 +694,25 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       term.options.cursorInactiveStyle = 'outline';
     }
   }, [hideCursor]);
+
+  // Listen for skill-invoke events from the Skills Panel / Command Palette.
+  // Only the visible, non-suspended terminal acts on these.
+  // detail.execute defaults to true; when false, text is typed without Enter.
+  useEffect(() => {
+    if (!visible || suspended) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const command = detail?.command;
+      if (!command || typeof command !== 'string') return;
+      const w = wsRef.current;
+      if (w && w.readyState === WebSocket.OPEN) {
+        const execute = detail?.execute !== false;
+        w.send(JSON.stringify({ type: 'input', data: execute ? command + '\r' : command }));
+      }
+    };
+    window.addEventListener('octoally:skill-invoke', handler);
+    return () => window.removeEventListener('octoally:skill-invoke', handler);
+  }, [visible, suspended]);
 
   // Re-focus and refit terminal when it becomes visible.
   // Single RAF + short delay ensures DOM layout is settled before measuring.

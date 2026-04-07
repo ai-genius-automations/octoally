@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { config } from '../config.js';
+import { insertEvent } from '../services/event-store.js';
 
 const OCTOALLY_HOOK_MARKER = '# octoally-events-hook';
 const LEGACY_HOOK_MARKER = '# hivecommand-events-hook';
@@ -129,6 +130,75 @@ function uninstallHook(settings: ClaudeSettings): ClaudeSettings {
   return settings;
 }
 
+// ─── Notification Hook Types ──────────────────────────────────
+// 6 core notification hooks for system-wide event observation.
+
+export type NotificationHookType =
+  | 'rate_limit'       // Fired when API rate limit hit (429)
+  | 'budget_warn'      // Fired when budget threshold crossed
+  | 'session_complete' // Fired when a session finishes
+  | 'tool_denied'      // Fired when a tool is denied by permission system
+  | 'error_spike'      // Fired when error rate exceeds threshold
+  | 'model_change';    // Fired when model changes mid-session
+
+export interface NotificationHookRegistration {
+  id: string;
+  type: NotificationHookType;
+  callback_url?: string;    // Optional webhook URL
+  log_to_events: boolean;   // Whether to log to event store
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface NotificationHookPayload {
+  type: NotificationHookType;
+  session_id?: string;
+  detail: Record<string, unknown>;
+  timestamp: string;
+}
+
+// In-memory hook registrations
+const notificationHooks: Map<string, NotificationHookRegistration> = new Map();
+
+const VALID_HOOK_TYPES: NotificationHookType[] = [
+  'rate_limit', 'budget_warn', 'session_complete',
+  'tool_denied', 'error_spike', 'model_change',
+];
+
+/**
+ * Fire a notification hook. Iterates all registered hooks matching the type,
+ * logs to event store if configured, and dispatches webhook if configured.
+ * All webhook failures are non-fatal.
+ */
+export async function fireNotificationHook(payload: NotificationHookPayload): Promise<void> {
+  for (const [, reg] of notificationHooks) {
+    if (reg.type !== payload.type || !reg.enabled) continue;
+
+    // Log to event store
+    if (reg.log_to_events) {
+      insertEvent({
+        session_id: payload.session_id,
+        type: `hook:${payload.type}`,
+        data: payload.detail,
+      });
+    }
+
+    // Fire webhook if configured
+    if (reg.callback_url) {
+      try {
+        await fetch(reg.callback_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch {
+        // Webhook failures are non-fatal
+      }
+    }
+  }
+}
+
 export const hooksRoutes: FastifyPluginAsync = async (app) => {
   // Check if the OctoAlly events hook is installed for a project
   app.get<{
@@ -161,5 +231,91 @@ export const hooksRoutes: FastifyPluginAsync = async (app) => {
 
     await saveSettings(projectPath, settings);
     return { ok: true, installed: isHookInstalled(settings) };
+  });
+
+  // ─── Notification Hook API Routes ───────────────────────────
+
+  // List all notification hook registrations
+  app.get('/hooks/notifications', async (_req, reply) => {
+    const hooks = Array.from(notificationHooks.values());
+    return reply.send({ ok: true, hooks });
+  });
+
+  // Register a new notification hook
+  app.post<{
+    Body: { type: NotificationHookType; callback_url?: string; log_to_events?: boolean };
+  }>('/hooks/notifications/register', async (req, reply) => {
+    const { type, callback_url, log_to_events } = req.body || {};
+
+    if (!type || !VALID_HOOK_TYPES.includes(type)) {
+      return reply.status(400).send({
+        ok: false,
+        error: `Invalid hook type. Valid: ${VALID_HOOK_TYPES.join(', ')}`,
+      });
+    }
+
+    const id = `nhook_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const registration: NotificationHookRegistration = {
+      id,
+      type,
+      callback_url,
+      log_to_events: log_to_events !== false,
+      enabled: true,
+      created_at: new Date().toISOString(),
+    };
+
+    notificationHooks.set(id, registration);
+    return reply.send({ ok: true, hook: registration });
+  });
+
+  // Enable/disable a notification hook
+  app.patch<{
+    Params: { id: string };
+    Body: { enabled?: boolean };
+  }>('/hooks/notifications/:id', async (req, reply) => {
+    const reg = notificationHooks.get(req.params.id);
+    if (!reg) {
+      return reply.status(404).send({ ok: false, error: 'Hook not found' });
+    }
+
+    if (typeof req.body?.enabled === 'boolean') {
+      reg.enabled = req.body.enabled;
+    }
+
+    return reply.send({ ok: true, hook: reg });
+  });
+
+  // Delete a notification hook
+  app.delete<{
+    Params: { id: string };
+  }>('/hooks/notifications/:id', async (req, reply) => {
+    if (notificationHooks.delete(req.params.id)) {
+      return reply.send({ ok: true });
+    }
+    return reply.status(404).send({ ok: false, error: 'Hook not found' });
+  });
+
+  // Fire a notification hook manually (for testing)
+  app.post<{
+    Body: { type: NotificationHookType; session_id?: string; detail?: Record<string, unknown> };
+  }>('/hooks/notifications/fire', async (req, reply) => {
+    const { type, session_id, detail = {} } = req.body || {};
+
+    if (!type || !VALID_HOOK_TYPES.includes(type)) {
+      return reply.status(400).send({
+        ok: false,
+        error: `Invalid hook type. Valid: ${VALID_HOOK_TYPES.join(', ')}`,
+      });
+    }
+
+    const payload: NotificationHookPayload = {
+      type,
+      session_id,
+      detail,
+      timestamp: new Date().toISOString(),
+    };
+
+    await fireNotificationHook(payload);
+    return reply.send({ ok: true, fired: type });
   });
 };

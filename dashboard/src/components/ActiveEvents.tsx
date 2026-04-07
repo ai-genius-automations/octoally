@@ -3,6 +3,7 @@ import { useStreamStore } from '../lib/websocket';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Radio, Terminal, FileEdit, Zap, AlertCircle, ArrowLeft, FolderOpen } from 'lucide-react';
+import { ModelBadge, parseRouteDecision } from './ModelBadge';
 
 function stripAnsiCodes(text: string): string {
   // eslint-disable-next-line no-control-regex
@@ -24,6 +25,7 @@ const typeIcons: Record<string, typeof Radio> = {
   session_start: Radio,
   session_end: Radio,
   pty_output: Terminal,
+  route_decision: Radio,
 };
 
 const typeColors: Record<string, string> = {
@@ -34,6 +36,7 @@ const typeColors: Record<string, string> = {
   session_start: '#facc15',
   session_end: '#94a3b8',
   pty_output: '#34d399',
+  route_decision: '#94a3b8',
 };
 
 interface ActiveEventsProps {
@@ -149,6 +152,8 @@ export function ActiveEvents({ onBack, onGoToSession }: ActiveEventsProps) {
                 else if (cmd) summary = cleanOutput(cmd).slice(0, 80);
               }
 
+              const routeDecision = parseRouteDecision(event.type, event.data);
+
               return (
                 <div
                   key={event.id}
@@ -168,6 +173,9 @@ export function ActiveEvents({ onBack, onGoToSession }: ActiveEventsProps) {
                         <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                           {event.tool_name}
                         </span>
+                      )}
+                      {routeDecision && (
+                        <ModelBadge data={routeDecision} />
                       )}
                       {session && (
                         <button

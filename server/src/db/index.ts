@@ -80,12 +80,27 @@ export function initDb(): void {
       value TEXT NOT NULL
     );
 
+    -- Conversation transcripts for replay
+    CREATE TABLE IF NOT EXISTS transcripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      role TEXT NOT NULL,       -- 'user', 'assistant', 'system', 'tool_use', 'tool_result'
+      content TEXT,
+      tool_name TEXT,
+      tokens_in INTEGER DEFAULT 0,
+      tokens_out INTEGER DEFAULT 0,
+      cost_usd REAL DEFAULT 0,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pty_output_session_seq ON pty_output(session_id, seq);
     CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
     CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_transcripts_session_seq ON transcripts(session_id, seq);
   `);
 
   // Migrations — idempotent column additions
@@ -102,6 +117,8 @@ export function initDb(): void {
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id)'); } catch {}
   // Codex support: track which CLI (claude or codex) launched the session
   try { db.exec("ALTER TABLE sessions ADD COLUMN cli_type TEXT DEFAULT 'claude'"); } catch {}
+
+  try { db.exec('ALTER TABLE sessions ADD COLUMN session_state TEXT'); } catch {}
 
   // Note: orphaned process cleanup is handled by cleanupStaleRunningSessions()
   // which is called after initDb() in index.ts — it kills processes AND marks DB records.

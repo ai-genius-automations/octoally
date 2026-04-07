@@ -3,6 +3,7 @@ import { useStreamStore } from '../lib/websocket';
 import { api } from '../lib/api';
 import type { Event } from '../lib/api';
 import { Radio, Terminal, FileEdit, Zap, AlertCircle } from 'lucide-react';
+import { ModelBadge, parseRouteDecision } from './ModelBadge';
 
 function stripAnsiCodes(text: string): string {
   // eslint-disable-next-line no-control-regex
@@ -27,6 +28,7 @@ const typeIcons: Record<string, typeof Radio> = {
   session_resume: Radio,
   session_adopt: Radio,
   pty_output: Terminal,
+  route_decision: Radio,
 };
 
 const typeColors: Record<string, string> = {
@@ -40,6 +42,7 @@ const typeColors: Record<string, string> = {
   session_resume: '#22d3ee',
   session_adopt: '#c084fc',
   pty_output: '#34d399',
+  route_decision: '#94a3b8',
 };
 
 interface EventStreamProps {
@@ -153,6 +156,8 @@ export function EventStream({ sessionId, sessionIds }: EventStreamProps = {}) {
                 else if (task) summary = task;
               }
 
+              const routeDecision = parseRouteDecision(event.type, event.data);
+
               return (
                 <div
                   key={event.id}
@@ -161,7 +166,7 @@ export function EventStream({ sessionId, sessionIds }: EventStreamProps = {}) {
                 >
                   <Icon className="w-4 h-4 mt-0.5 shrink-0" style={{ color }} />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                         style={{ background: `${color}15`, color }}
@@ -172,6 +177,9 @@ export function EventStream({ sessionId, sessionIds }: EventStreamProps = {}) {
                         <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                           {event.tool_name}
                         </span>
+                      )}
+                      {routeDecision && (
+                        <ModelBadge data={routeDecision} />
                       )}
                       <span className="text-[10px] ml-auto shrink-0" style={{ color: 'var(--text-secondary)' }}>
                         {new Date(event.timestamp).toLocaleTimeString()}
