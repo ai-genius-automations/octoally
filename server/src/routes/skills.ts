@@ -119,13 +119,25 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
       details: { telemetry: routerDb },
     });
 
-    // Check Ollama
+    // Check Ollama — TCP probe GPU tunnel (11435) then CPU (11434)
+    const { createConnection } = await import('net');
+    const tcpProbe = (port: number): Promise<boolean> => new Promise(resolve => {
+      const sock = createConnection({ host: '127.0.0.1', port, timeout: 400 }, () => { sock.destroy(); resolve(true); });
+      sock.on('error', () => resolve(false));
+      sock.on('timeout', () => { sock.destroy(); resolve(false); });
+    });
+    let ollamaStatus: { connected: boolean; gpu: boolean; url: string } = { connected: false, gpu: false, url: '' };
+    if (await tcpProbe(11435)) {
+      ollamaStatus = { connected: true, gpu: true, url: 'http://127.0.0.1:11435' };
+    } else if (await tcpProbe(11434)) {
+      ollamaStatus = { connected: true, gpu: false, url: 'http://127.0.0.1:11434' };
+    }
     integrations.push({
       id: 'ollama',
       name: 'Ollama',
-      connected: false, // Will be checked client-side or via health endpoint
-      status: 'unknown' as const,
-      details: { url: 'http://127.0.0.1:11434' },
+      connected: ollamaStatus.connected,
+      status: ollamaStatus.connected ? 'ok' : 'error',
+      details: { url: ollamaStatus.url || 'http://127.0.0.1:11434', gpu: ollamaStatus.gpu },
     });
 
     // Check Gemini CLI

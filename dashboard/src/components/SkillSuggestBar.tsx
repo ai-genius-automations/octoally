@@ -1,9 +1,33 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Zap, ChevronUp, X } from 'lucide-react';
+import { Zap, ChevronUp, X, Cpu } from 'lucide-react';
 import { api } from '../lib/api';
 import { searchSlash, searchIntent, recordSkillUsage } from '../lib/fuzzy';
 import type { IntentEntry } from '../lib/fuzzy';
 import type { SkillItem } from '../types/skills';
+
+type GpuState = 'gpu' | 'cpu' | 'off' | 'loading';
+
+function useGpuStatus(pollMs = 30000): GpuState {
+  const [state, setState] = useState<GpuState>('loading');
+  useEffect(() => {
+    let mounted = true;
+    const check = () => {
+      fetch('/api/system/status')
+        .then(r => r.json())
+        .then(data => {
+          if (!mounted) return;
+          const ollama = data.integrations?.find((i: any) => i.id === 'ollama');
+          if (!ollama || !ollama.connected) setState('off');
+          else setState(ollama.details?.gpu ? 'gpu' : 'cpu');
+        })
+        .catch(() => mounted && setState('off'));
+    };
+    check();
+    const id = setInterval(check, pollMs);
+    return () => { mounted = false; clearInterval(id); };
+  }, [pollMs]);
+  return state;
+}
 
 interface SkillSuggestBarProps {
   projectPath: string;
@@ -166,6 +190,7 @@ export function SkillSuggestBar({ projectPath }: SkillSuggestBarProps) {
 
   const showSuggestions = suggestions.length > 0;
   const sourceLabel = isSlashMode ? 'command' : clickedSkillIds.length > 0 ? 'related' : 'intent';
+  const gpuState = useGpuStatus();
 
   return (
     <div
@@ -282,6 +307,25 @@ export function SkillSuggestBar({ projectPath }: SkillSuggestBarProps) {
             {clickedSkillIds.length > 0 ? `${clickedSkillIds.length} added` : 'click to add'}
           </span>
         )}
+
+        {/* GPU/CPU indicator — always visible */}
+        <span
+          className="shrink-0 ml-auto flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full"
+          style={{
+            background: gpuState === 'gpu' ? 'rgba(34,197,94,0.15)' : gpuState === 'cpu' ? 'rgba(234,179,8,0.15)' : 'var(--bg-tertiary)',
+            color: gpuState === 'gpu' ? '#22c55e' : gpuState === 'cpu' ? '#eab308' : 'var(--text-tertiary)',
+            border: `1px solid ${gpuState === 'gpu' ? 'rgba(34,197,94,0.3)' : gpuState === 'cpu' ? 'rgba(234,179,8,0.3)' : 'var(--border)'}`,
+            lineHeight: '16px',
+          }}
+          title={
+            gpuState === 'gpu' ? 'Ollama via GPU tunnel (ROG_Beast RTX 5070 Ti)'
+            : gpuState === 'cpu' ? 'Ollama local CPU fallback'
+            : 'Ollama offline'
+          }
+        >
+          <Cpu className="w-2.5 h-2.5" />
+          {gpuState === 'gpu' ? 'GPU' : gpuState === 'cpu' ? 'CPU' : 'OFF'}
+        </span>
       </div>
     </div>
   );
