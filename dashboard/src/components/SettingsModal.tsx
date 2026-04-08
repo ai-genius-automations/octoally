@@ -62,7 +62,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [agentClaudeCmd, setAgentClaudeCmd] = useState('');
   const [agentCodexCmd, setAgentCodexCmd] = useState('');
   const [fontSize, setFontSize] = useState('13');
-  const [appFontSize, setAppFontSize] = useState('13');
+  const [appFontSize, setAppFontSize] = useState('16');
   const [serverPort, setServerPort] = useState('42010');
   const [saved, setSaved] = useState(false);
 
@@ -74,7 +74,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setAgentClaudeCmd(s.agent_claude_command || '');
       setAgentCodexCmd(s.agent_codex_command || '');
       setFontSize(s.terminal_font_size || '13');
-      setAppFontSize(s.app_font_size || '13');
+      setAppFontSize(s.app_font_size || '16');
       setServerPort(s.server_port || '42010');
     }
   }, [data]);
@@ -298,7 +298,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                       <input
                         type="range"
                         min="10"
-                        max="20"
+                        max="32"
                         step="1"
                         value={appFontSize}
                         onChange={(e) => {
@@ -310,7 +310,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                       />
                       <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
                         <span>10</span>
-                        <span>20</span>
+                        <span>32</span>
                       </div>
                     </div>
 

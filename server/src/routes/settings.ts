@@ -14,7 +14,7 @@ const DEFAULTS: Record<string, string> = {
   agent_claude_command: 'claude',
   agent_codex_command: 'codex',
   terminal_font_size: '13',
-  app_font_size: '13',
+  app_font_size: '16',
   server_port: '42010',
   ruflo_disposition: 'undecided',   // undecided | keep | remove_all | removed
   statusline_prompted: 'false',    // whether we've asked the user about statusline install
