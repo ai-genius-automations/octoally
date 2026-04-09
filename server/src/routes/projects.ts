@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { getDb } from '../db/index.js';
 import { nanoid } from 'nanoid';
-import { readdir, mkdir, readFile, writeFile, rm, unlink } from 'fs/promises';
+import { readdir, mkdir, readFile, writeFile, rm, unlink, copyFile } from 'fs/promises';
 import { join, resolve, basename } from 'path';
 import { homedir } from 'os';
 import { execFile } from 'child_process';
@@ -124,10 +124,20 @@ function stripRufloHooks(projectPath: string): string[] {
 async function cleanRufloFromProject(projectPath: string): Promise<string[]> {
   const cleaned: string[] = [];
 
+  // Backup and remove .claude/settings.json (ruflo polluted it with hooks)
+  // Leave the rest of .claude/ intact — rules, skills, agents, commands are user content
+  const claudeSettings = join(projectPath, '.claude', 'settings.json');
+  if (existsSync(claudeSettings)) {
+    try {
+      await copyFile(claudeSettings, join(projectPath, '.claude', 'settings.json.pre-cleanup-backup'));
+      await unlink(claudeSettings);
+      cleaned.push('backed up and removed .claude/settings.json');
+    } catch { /* non-fatal */ }
+  }
+
   // Nuke all ruflo/claude-flow directories (.swarm/ is kept — used by octoally-swarm)
   const dirsToRemove = [
     '.claude-flow',
-    '.claude',
     '.codex',
     '.devcortex-cli',
     '.hive-mind',
@@ -152,6 +162,11 @@ async function cleanRufloFromProject(projectPath: string): Promise<string[]> {
     '.mcp.json',
     'hooks/on-tool-use.sh',
     'ruvector.db',
+    '.claude/helpers/hook-handler.cjs',
+    '.claude/helpers/learning-service.mjs',
+    '.claude/helpers/learning-hooks.sh',
+    '.claude/helpers/sona-bridge.cjs',
+    '.claude/helpers/intelligence.cjs',
   ];
   for (const file of filesToRemove) {
     const fullPath = join(projectPath, file);
