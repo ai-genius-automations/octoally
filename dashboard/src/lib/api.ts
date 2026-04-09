@@ -233,6 +233,11 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ settings }),
       }),
+    statusline: {
+      get: () => fetchJSON<{ installed: boolean }>('/settings/statusline'),
+      install: () => fetchJSON<{ ok: boolean; scriptPath: string }>('/settings/statusline/install', { method: 'POST' }),
+      uninstall: () => fetchJSON<{ ok: boolean; removed: string[] }>('/settings/statusline/uninstall', { method: 'POST' }),
+    },
   },
   health: () => fetchJSON<{ name: string; version: string; status: string; uptime?: number; reconnecting?: boolean; reconnectTotal?: number; reconnectDone?: number }>('/health'),
   openFolder: (path: string) =>

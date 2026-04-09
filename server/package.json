@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && cp -r src/data/agents dist/data/",
+    "build": "tsc && cp -r src/data/agents dist/data/ && cp src/data/statusline.sh dist/data/",
     "start": "env NODE_ENV=production node dist/index.js"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { X, Settings, Check, Loader2, Zap, Bot, Type, Globe, RotateCcw } from 'lucide-react';
+import { X, Settings, Check, Loader2, Zap, Bot, Type, Globe, RotateCcw, BarChart3, Download, Trash2 } from 'lucide-react';
 import { ClaudeIcon, CodexIcon } from './CliIcons';
 
 interface SettingsModalProps {
@@ -118,7 +118,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         className="flex flex-col rounded-xl shadow-2xl overflow-hidden"
         style={{
           width: '100%',
-          maxWidth: '620px',
+          maxWidth: '900px',
           maxHeight: '90vh',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border)',
@@ -145,263 +145,341 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 space-y-6 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+        {/* Body — 2-column grid */}
+        <div className="px-6 py-5 overflow-y-auto" style={{ maxHeight: '65vh' }}>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--text-secondary)' }} />
             </div>
           ) : (
-            <>
-              {/* Session Commands */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4" style={{ color: '#60a5fa' }} />
-                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Session Commands
-                  </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+              {/* ── LEFT COLUMN ── */}
+              <div className="space-y-6">
+                {/* Session Commands */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4" style={{ color: '#60a5fa' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Session Commands
+                    </h4>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    The CLI command used when launching sessions.
+                  </p>
+                  <div className="space-y-3 pl-1">
+                    <CommandInput
+                      label="Claude"
+                      icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
+                      value={sessionClaudeCmd}
+                      onChange={setSessionClaudeCmd}
+                      placeholder="claude"
+                    />
+                    <CommandInput
+                      label="Codex"
+                      icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
+                      value={sessionCodexCmd}
+                      onChange={setSessionCodexCmd}
+                      placeholder="claude"
+                    />
+                  </div>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  The CLI command used when launching sessions.
-                </p>
-                <div className="space-y-3 pl-1">
-                  <CommandInput
-                    label="Claude"
-                    icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
-                    value={sessionClaudeCmd}
-                    onChange={setSessionClaudeCmd}
-                    placeholder="claude"
-                  />
-                  <CommandInput
-                    label="Codex"
-                    icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#60a5fa' }} />}
-                    value={sessionCodexCmd}
-                    onChange={setSessionCodexCmd}
-                    placeholder="claude"
-                  />
-                </div>
-              </div>
 
-              {/* Agent Commands */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="w-4 h-4" style={{ color: '#ef4444' }} />
-                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Agent Commands
-                  </h4>
+                {/* Agent Commands */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-4 h-4" style={{ color: '#ef4444' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Agent Commands
+                    </h4>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    The CLI command used when launching Agent sessions.
+                  </p>
+                  <div className="space-y-3 pl-1">
+                    <CommandInput
+                      label="Claude"
+                      icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
+                      value={agentClaudeCmd}
+                      onChange={setAgentClaudeCmd}
+                      placeholder="claude"
+                    />
+                    <CommandInput
+                      label="Codex"
+                      icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
+                      value={agentCodexCmd}
+                      onChange={setAgentCodexCmd}
+                      placeholder="claude"
+                    />
+                  </div>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  The CLI command used when launching Agent sessions.
-                </p>
-                <div className="space-y-3 pl-1">
-                  <CommandInput
-                    label="Claude"
-                    icon={<ClaudeIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
-                    value={agentClaudeCmd}
-                    onChange={setAgentClaudeCmd}
-                    placeholder="claude"
-                  />
-                  <CommandInput
-                    label="Codex"
-                    icon={<CodexIcon className="w-3.5 h-3.5" style={{ color: '#ef4444' }} />}
-                    value={agentCodexCmd}
-                    onChange={setAgentCodexCmd}
-                    placeholder="claude"
-                  />
-                </div>
-              </div>
 
-              {/* Server */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4" style={{ color: '#22c55e' }} />
-                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Server
-                  </h4>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  Port for the OctoAlly server. Changes take effect on restart.
-                </p>
-                <div className="space-y-2 pl-1">
-                  <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                    Port
-                  </label>
-                  <input
-                    type="number"
-                    min="1024"
-                    max="65535"
-                    value={serverPort}
-                    onChange={(e) => setServerPort(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm"
-                    style={{
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                      border: '1px solid var(--border)',
-                      outline: 'none',
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-                    onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-                  />
-                  {networkData?.addresses && networkData.addresses.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {networkData.addresses.map((ip) => (
-                        <span
-                          key={ip}
-                          className="px-2 py-0.5 rounded text-xs font-mono"
-                          style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-                        >
-                          http://{ip}:{serverPort}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    onClick={async () => {
-                      try {
-                        await fetch('/api/restart', { method: 'POST' });
-                      } catch {}
-                    }}
-                    className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
-                    style={{ background: 'var(--warning)', color: '#000' }}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Restart Server
-                  </button>
-                </div>
-              </div>
-
-              {/* Appearance */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Type className="w-4 h-4" style={{ color: '#a855f7' }} />
-                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Appearance
-                  </h4>
-                </div>
-                <div className="space-y-4 pl-1">
-                  {/* App Font Size */}
-                  <div className="space-y-2">
-                    <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                      <span>App Font Size</span>
-                      <span
-                        className="px-2 py-0.5 rounded text-xs tabular-nums"
-                        style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
-                      >
-                        {appFontSize}px
-                      </span>
+                {/* Server */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4" style={{ color: '#22c55e' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Server
+                    </h4>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Port for the OctoAlly server. Changes take effect on restart.
+                  </p>
+                  <div className="space-y-2 pl-1">
+                    <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                      Port
                     </label>
                     <input
-                      type="range"
-                      min="10"
-                      max="20"
-                      step="1"
-                      value={appFontSize}
-                      onChange={(e) => {
-                        setAppFontSize(e.target.value);
-                        document.documentElement.style.setProperty('--app-font-size', `${e.target.value}px`);
+                      type="number"
+                      min="1024"
+                      max="65535"
+                      value={serverPort}
+                      onChange={(e) => setServerPort(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg text-sm"
+                      style={{
+                        background: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border)',
+                        outline: 'none',
                       }}
-                      className="w-full accent-purple-500"
-                      style={{ height: '4px' }}
+                      onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
                     />
-                    <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
-                      <span>10</span>
-                      <span>20</span>
-                    </div>
+                    {networkData?.addresses && networkData.addresses.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {networkData.addresses.map((ip) => (
+                          <span
+                            key={ip}
+                            className="px-2 py-0.5 rounded text-xs font-mono"
+                            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                          >
+                            http://{ip}:{serverPort}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={async () => {
+                        try {
+                          await fetch('/api/restart', { method: 'POST' });
+                        } catch {}
+                      }}
+                      className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+                      style={{ background: 'var(--warning)', color: '#000' }}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Restart Server
+                    </button>
                   </div>
+                </div>
+              </div>
 
-                  {/* Terminal Font Size */}
-                  <div className="space-y-2">
-                    <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                      <span>Terminal Font Size</span>
-                      <span
-                        className="px-2 py-0.5 rounded text-xs tabular-nums"
-                        style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
-                      >
-                        {fontSize}px
-                      </span>
-                    </label>
-                    <input
-                      type="range"
-                      min="8"
-                      max="24"
-                      step="1"
-                      value={fontSize}
-                      onChange={(e) => setFontSize(e.target.value)}
-                      className="w-full accent-purple-500"
-                      style={{ height: '4px' }}
-                    />
-                    <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
-                      <span>8</span>
-                      <span>24</span>
+              {/* ── RIGHT COLUMN ── */}
+              <div className="space-y-6">
+                {/* Appearance */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Type className="w-4 h-4" style={{ color: '#a855f7' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Appearance
+                    </h4>
+                  </div>
+                  <div className="space-y-4 pl-1">
+                    {/* App Font Size */}
+                    <div className="space-y-2">
+                      <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                        <span>App Font Size</span>
+                        <span
+                          className="px-2 py-0.5 rounded text-xs tabular-nums"
+                          style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
+                        >
+                          {appFontSize}px
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min="10"
+                        max="20"
+                        step="1"
+                        value={appFontSize}
+                        onChange={(e) => {
+                          setAppFontSize(e.target.value);
+                          document.documentElement.style.setProperty('--app-font-size', `${e.target.value}px`);
+                        }}
+                        className="w-full accent-purple-500"
+                        style={{ height: '4px' }}
+                      />
+                      <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+                        <span>10</span>
+                        <span>20</span>
+                      </div>
+                    </div>
+
+                    {/* Terminal Font Size */}
+                    <div className="space-y-2">
+                      <label className="flex items-center justify-between text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                        <span>Terminal Font Size</span>
+                        <span
+                          className="px-2 py-0.5 rounded text-xs tabular-nums"
+                          style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
+                        >
+                          {fontSize}px
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min="8"
+                        max="24"
+                        step="1"
+                        value={fontSize}
+                        onChange={(e) => setFontSize(e.target.value)}
+                        className="w-full accent-purple-500"
+                        style={{ height: '4px' }}
+                      />
+                      <div className="flex justify-between text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>
+                        <span>8</span>
+                        <span>24</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              {/* Reinitialize */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4" style={{ color: '#f59e0b' }} />
-                  <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    Reinitialize OctoAlly
-                  </h4>
+
+                {/* Claude Status Bar */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" style={{ color: '#06b6d4' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Claude Status Bar
+                    </h4>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Custom status bar for Claude Code showing git branch, model, context usage, cost, and session duration.
+                  </p>
+                  {(() => {
+                    const { data: slData, isLoading: slLoading } = useQuery({
+                      queryKey: ['statusline'],
+                      queryFn: () => api.settings.statusline.get(),
+                    });
+                    const [slBusy, setSlBusy] = useState(false);
+                    const [slResult, setSlResult] = useState<string | null>(null);
+
+                    const handleToggle = async () => {
+                      setSlBusy(true);
+                      setSlResult(null);
+                      try {
+                        if (slData?.installed) {
+                          await api.settings.statusline.uninstall();
+                          setSlResult('Status bar removed.');
+                        } else {
+                          await api.settings.statusline.install();
+                          setSlResult('Status bar installed! It will appear on your next Claude Code interaction.');
+                        }
+                        queryClient.invalidateQueries({ queryKey: ['statusline'] });
+                      } catch (err: any) {
+                        setSlResult(`Error: ${err.message || 'Failed'}`);
+                      } finally {
+                        setSlBusy(false);
+                      }
+                    };
+
+                    return (
+                      <>
+                        <button
+                          onClick={handleToggle}
+                          disabled={slBusy || slLoading}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+                          style={{
+                            background: slData?.installed ? '#ef4444' : '#06b6d4',
+                            color: '#fff',
+                            opacity: slBusy || slLoading ? 0.6 : 1,
+                          }}
+                        >
+                          {slBusy ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : slData?.installed ? (
+                            <Trash2 className="w-3 h-3" />
+                          ) : (
+                            <Download className="w-3 h-3" />
+                          )}
+                          {slBusy
+                            ? (slData?.installed ? 'Removing...' : 'Installing...')
+                            : (slData?.installed ? 'Uninstall Status Bar' : 'Install Status Bar')}
+                        </button>
+                        {slResult && (
+                          <p className="text-xs mt-1" style={{ color: slResult.startsWith('Error') ? '#ef4444' : '#22c55e' }}>
+                            {slResult}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  Resets all Claude/Codex settings, removes old artifacts, and reinstalls default agents and skills.
-                  Your projects are preserved.
-                </p>
-                {(() => {
-                  const [running, setRunning] = useState(false);
-                  const [result, setResult] = useState<string | null>(null);
-                  return (
-                    <>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(
-                            'This will:\n\n' +
-                            '• Remove .claude/, .codex/, CLAUDE.md from all projects\n' +
-                            '• Reset session commands to defaults\n' +
-                            '• Remove broken symlinks and old config\n' +
-                            '• Reinstall all default agents and skills\n\n' +
-                            'Your projects will be preserved. Claude/Codex will ask you to trust each folder again on next use.\n\nContinue?'
-                          )) return;
-                          setRunning(true);
-                          setResult(null);
-                          try {
-                            const res = await api.projects.rufloUninstallAll();
-                            queryClient.invalidateQueries({ queryKey: ['projects'] });
-                            queryClient.invalidateQueries({ queryKey: ['ruflo-disposition'] });
-                            const parts: string[] = [];
-                            if (res.projectsCleaned > 0) parts.push(`reset ${res.projectsCleaned} project(s)`);
-                            const agentCount = res.globalCleaned.filter((s: string) => s.includes('agent')).length;
-                            if (agentCount > 0) parts.push(`installed agents`);
-                            const otherCount = res.globalCleaned.length - agentCount;
-                            if (otherCount > 0) parts.push(`cleaned ${otherCount} global item(s)`);
-                            setResult(parts.length > 0
-                              ? `Done — ${parts.join(', ')}.`
-                              : 'Already clean — reinstalled agents.');
-                          } catch (err: any) {
-                            setResult(`Error: ${err.message || 'Failed'}`);
-                          } finally {
-                            setRunning(false);
-                          }
-                        }}
-                        disabled={running}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
-                        style={{ background: '#f59e0b', color: '#000', opacity: running ? 0.6 : 1 }}
-                      >
-                        {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                        {running ? 'Reinitializing...' : 'Reinitialize'}
-                      </button>
-                      {result && (
-                        <p className="text-xs mt-1" style={{ color: result.startsWith('Error') ? '#ef4444' : '#22c55e' }}>
-                          {result}
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
+
+                {/* Reinitialize */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4" style={{ color: '#f59e0b' }} />
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Reinitialize OctoAlly
+                    </h4>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Resets all Claude/Codex settings, removes old artifacts, and reinstalls default agents and skills.
+                    Your projects are preserved.
+                  </p>
+                  {(() => {
+                    const [running, setRunning] = useState(false);
+                    const [result, setResult] = useState<string | null>(null);
+                    return (
+                      <>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(
+                              'This will:\n\n' +
+                              '• Remove .claude/, .codex/, CLAUDE.md from all projects\n' +
+                              '• Reset session commands to defaults\n' +
+                              '• Remove broken symlinks and old config\n' +
+                              '• Reinstall all default agents and skills\n\n' +
+                              'Your projects will be preserved. Claude/Codex will ask you to trust each folder again on next use.\n\nContinue?'
+                            )) return;
+                            setRunning(true);
+                            setResult(null);
+                            try {
+                              const res = await api.projects.rufloUninstallAll();
+                              queryClient.invalidateQueries({ queryKey: ['projects'] });
+                              queryClient.invalidateQueries({ queryKey: ['ruflo-disposition'] });
+                              const parts: string[] = [];
+                              if (res.projectsCleaned > 0) parts.push(`reset ${res.projectsCleaned} project(s)`);
+                              const agentCount = res.globalCleaned.filter((s: string) => s.includes('agent')).length;
+                              if (agentCount > 0) parts.push(`installed agents`);
+                              const otherCount = res.globalCleaned.length - agentCount;
+                              if (otherCount > 0) parts.push(`cleaned ${otherCount} global item(s)`);
+                              setResult(parts.length > 0
+                                ? `Done — ${parts.join(', ')}.`
+                                : 'Already clean — reinstalled agents.');
+                            } catch (err: any) {
+                              setResult(`Error: ${err.message || 'Failed'}`);
+                            } finally {
+                              setRunning(false);
+                            }
+                          }}
+                          disabled={running}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+                          style={{ background: '#f59e0b', color: '#000', opacity: running ? 0.6 : 1 }}
+                        >
+                          {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                          {running ? 'Reinitializing...' : 'Reinitialize'}
+                        </button>
+                        {result && (
+                          <p className="text-xs mt-1" style={{ color: result.startsWith('Error') ? '#ef4444' : '#22c55e' }}>
+                            {result}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
 

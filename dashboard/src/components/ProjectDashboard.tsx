@@ -34,6 +34,7 @@ import {
 import { ClaudeIcon, CodexIcon } from './CliIcons';
 import { ConfirmModal } from './ConfirmModal';
 import { RufloDeprecationModal } from './RufloDeprecationModal';
+import { StatuslinePromptModal } from './StatuslinePromptModal';
 
 interface ProjectDashboardProps {
   onOpenProject: (projectId: string, projectName: string, quickLaunch?: 'session' | 'agent' | 'terminal', cliType?: 'claude' | 'codex') => void;
@@ -1363,6 +1364,20 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
     }
   }, [dispositionData]);
 
+  // Statusline prompt — ask once if user wants to install custom status bar
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.settings.get(),
+    staleTime: 60_000,
+  });
+  const [showStatuslinePrompt, setShowStatuslinePrompt] = useState(false);
+
+  useEffect(() => {
+    if (settingsData?.settings?.statusline_prompted === 'false' && !showDeprecationModal) {
+      setShowStatuslinePrompt(true);
+    }
+  }, [settingsData, showDeprecationModal]);
+
   // Uninstall ruflo from a single project
   const [uninstallingId, setUninstallingId] = useState<string | null>(null);
   const uninstallMutation = useMutation({
@@ -1870,6 +1885,12 @@ export function ProjectDashboard({ onOpenProject }: ProjectDashboardProps) {
       {showDeprecationModal && (
         <RufloDeprecationModal
           onClose={() => setShowDeprecationModal(false)}
+        />
+      )}
+
+      {showStatuslinePrompt && !showDeprecationModal && (
+        <StatuslinePromptModal
+          onClose={() => setShowStatuslinePrompt(false)}
         />
       )}
 
