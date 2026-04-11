@@ -366,13 +366,20 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
   // Update project
   app.patch<{
     Params: { id: string };
-    Body: { name?: string; description?: string; session_prompt?: string | null; openclaw_prompt?: string | null; default_web_url?: string | null; skip_permissions?: number; color?: string };
+    Body: { name?: string; path?: string; description?: string; session_prompt?: string | null; openclaw_prompt?: string | null; default_web_url?: string | null; skip_permissions?: number; color?: string };
   }>('/projects/:id', async (req, reply) => {
     const db = getDb();
     const updates: string[] = [];
     const params: unknown[] = [];
 
     if (req.body.name) { updates.push('name = ?'); params.push(req.body.name); }
+    if (req.body.path !== undefined) {
+      const newPath = resolve(req.body.path);
+      if (!existsSync(newPath)) return reply.status(400).send({ error: `Path does not exist: ${newPath}` });
+      const dup = db.prepare('SELECT id FROM projects WHERE path = ? AND id != ?').get(newPath, req.params.id) as { id: string } | undefined;
+      if (dup) return reply.status(409).send({ error: 'Another project already uses this path' });
+      updates.push('path = ?'); params.push(newPath);
+    }
     if (req.body.description !== undefined) { updates.push('description = ?'); params.push(req.body.description); }
     if (req.body.session_prompt !== undefined) { updates.push('session_prompt = ?'); params.push(req.body.session_prompt); }
     if (req.body.openclaw_prompt !== undefined) { updates.push('openclaw_prompt = ?'); params.push(req.body.openclaw_prompt); }

@@ -156,7 +156,7 @@ function ProjectForm({
   const [initialAgentsMd, setInitialAgentsMd] = useState('');
   const [initialSettingsJson, setInitialSettingsJson] = useState('');
 
-  const projectPath = mode === 'edit' ? project!.path : path;
+  const projectPath = mode === 'edit' ? path : path;
 
   // Load CLAUDE.md (edit mode only)
   const claudeMdQuery = useQuery({
@@ -235,6 +235,7 @@ function ProjectForm({
     mutationFn: () => {
       const fields: Record<string, string | number | null | undefined> = {};
       if (name !== project!.name) fields.name = name;
+      if (path !== project!.path) fields.path = path;
       if (description !== (project!.description || '')) fields.description = description;
       if (defaultWebUrl !== (project!.default_web_url || '')) fields.default_web_url = defaultWebUrl || null;
       if (sessionPrompt !== (project!.session_prompt || ''))
@@ -246,7 +247,7 @@ function ProjectForm({
       return api.projects.update(project!.id, fields as any);
     },
     onSuccess: async () => {
-      const savePath = project!.path;
+      const savePath = path;
       try {
         if (claudeMd !== initialClaudeMd) await api.files.write(`${savePath}/CLAUDE.md`, claudeMd);
         if (agentsMd !== initialAgentsMd) await api.files.write(`${savePath}/AGENTS.md`, agentsMd);
@@ -377,16 +378,37 @@ function ProjectForm({
               </div>
             )}
 
-            {/* Edit mode: show path as read-only */}
+            {/* Edit mode: editable path with folder browser */}
             {mode === 'edit' && (
               <div>
                 <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>Path</label>
-                <div
-                  className="px-4 py-2.5 rounded-lg border text-sm font-mono"
-                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-                >
-                  {project!.path}
+                <div className="flex gap-2">
+                  <input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    className={`flex-1 ${inputClass} font-mono`}
+                    style={inputStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowBrowser(!showBrowser)}
+                    className="px-3 py-2 rounded-lg border text-xs flex items-center gap-1.5"
+                    style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', background: 'var(--bg-secondary)' }}
+                  >
+                    <Folder className="w-3.5 h-3.5" /> Browse
+                  </button>
                 </div>
+                {path !== project!.path && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-xs" style={{ color: 'var(--warning, #f59e0b)' }}>
+                    <AlertTriangle className="w-3 h-3" />
+                    Path changed — active sessions may need reconnection
+                  </div>
+                )}
+              </div>
+            )}
+            {mode === 'edit' && showBrowser && (
+              <div>
+                <FolderBrowser onSelect={handleFolderSelect} />
               </div>
             )}
 
