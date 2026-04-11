@@ -111,6 +111,14 @@ npm install 2>&1 | tail -1
 npm run build 2>&1 | tail -1
 log_ok "Dashboard rebuilt"
 
+# Re-apply custom patches
+PATCH_SCRIPT="$HOME/.config/octoally-patches/apply.sh"
+if [ -f "$PATCH_SCRIPT" ]; then
+  log_info "Re-applying custom patches..."
+  bash "$PATCH_SCRIPT" 2>&1 | while read -r line; do log_info "  $line"; done
+  log_ok "Patches re-applied"
+fi
+
 # Restart server if running (service or manual)
 if [ "$(uname -s)" = "Linux" ] && systemctl is-active --quiet octoally 2>/dev/null; then
   log_info "Restarting systemd service..."

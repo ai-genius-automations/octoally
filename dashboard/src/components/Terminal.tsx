@@ -157,6 +157,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [connected, setConnected] = useState(false);
+  const [autoRecovering, setAutoRecovering] = useState(false);
 
   // Read terminal font size from settings
   const { data: settingsData } = useQuery({
@@ -363,10 +364,18 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     let reconnectAttempts = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let intentionalClose = false;
+    // Auto-recovery: when server says session is dead, call onReconnect to create a new session
+    let autoRecoveryAttempts = 0;
+    const MAX_AUTO_RECOVERY = 3;
+    let autoRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
     // Suspension: close without showing disconnect messages or triggering reconnect
     let suspendedClose = false;
     // Set when doResize wanted to send but WS wasn't open yet
     let pendingResize = false;
+    // Deferred clear: when true, the next output message will clear the terminal
+    // before writing. This prevents the "optimistic clear" bug where term.clear()
+    // wipes the display before reconnection replay data arrives.
+    let awaitingReplay = false;
     function connectWs() {
       if (isSuspendedRef.current) return;
 
@@ -428,6 +437,12 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
           switch (msg.type) {
             case 'output':
               reconnectAttempts = 0;
+              // Deferred clear: if we reconnected after a drop, clear the stale
+              // display only now that fresh replay data has actually arrived.
+              if (awaitingReplay) {
+                awaitingReplay = false;
+                term.clear();
+              }
               // Defense-in-depth: strip focus reporting enable/disable sequences
               // so xterm.js never enters sendFocusMode (which causes focus/blur
               // events to be sent as input, corrupting Codex TUI rendering)
@@ -445,10 +460,30 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
               intentionalClose = true;
               onExit?.(msg.exitCode);
               break;
-            case 'error':
-              term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
-              intentionalClose = true;
+            case 'error': {
+              const isDeadSession = /not found|not running/i.test(msg.message || '');
+              if (isDeadSession && onReconnect && autoRecoveryAttempts < MAX_AUTO_RECOVERY) {
+                // Session is dead — auto-recover by creating a new session
+                autoRecoveryAttempts++;
+                intentionalClose = true; // stop WS reconnect loop
+                const attempt = autoRecoveryAttempts;
+                term.write(`\r\n\x1b[33m[Session lost — auto-recovering (${attempt}/${MAX_AUTO_RECOVERY})...]\x1b[0m\r\n`);
+                setAutoRecovering(true);
+                autoRecoveryTimer = setTimeout(() => {
+                  autoRecoveryTimer = null;
+                  onReconnect();
+                  // Give the new session time to spin up before clearing status.
+                  // The Terminal component will be remounted with a new sessionId
+                  // by SessionView, so this timeout is a fallback safety net.
+                  setTimeout(() => setAutoRecovering(false), 3000);
+                }, 1500 * attempt); // 1.5s, 3s, 4.5s — increasing delay
+              } else {
+                term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
+                intentionalClose = true;
+                setAutoRecovering(false);
+              }
               break;
+            }
           }
         } catch {
           // ignore
@@ -474,7 +509,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
             term.write(`\r\n\x1b[90m[Disconnected — reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts}/30)...]\x1b[0m\r\n`);
           }
           reconnectTimer = setTimeout(() => {
-            term.clear();
+            awaitingReplay = true;
             connectWs();
           }, delay);
         } else {
@@ -507,7 +542,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
         reconnectAttempts = 0;
-        term.clear();
+        awaitingReplay = true;
         connectWs();
       }
     }
@@ -587,6 +622,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
       disconnectFnRef.current = null;
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      if (autoRecoveryTimer !== null) clearTimeout(autoRecoveryTimer);
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       pasteTarget.removeEventListener('paste', pasteHandler, { capture: true } as EventListenerOptions);
@@ -972,16 +1008,22 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
         )}
         {!connected && !suspended && (
           <>
-            {onReconnect && (
+            {onReconnect && !autoRecovering && (
               <button onClick={onReconnect}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors"
                 style={{ background: 'var(--accent)', color: 'white' }}>
                 <RotateCcw className="w-3 h-3" /> Reconnect
               </button>
             )}
-            <div className="px-2 py-1 rounded text-xs" style={{ background: 'var(--error)', color: 'white' }}>
-              Disconnected
-            </div>
+            {autoRecovering ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs" style={{ background: 'var(--warning, #d97706)', color: 'white' }}>
+                <Loader2 className="w-3 h-3 animate-spin" /> Reconnecting...
+              </div>
+            ) : (
+              <div className="px-2 py-1 rounded text-xs" style={{ background: 'var(--error)', color: 'white' }}>
+                Disconnected
+              </div>
+            )}
           </>
         )}
       </div>

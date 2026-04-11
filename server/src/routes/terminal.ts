@@ -133,6 +133,12 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
             }
           } catch { /* ignore */ }
         });
+        const pingInterval = setInterval(() => {
+          if (socket.readyState === 1) socket.ping();
+          else clearInterval(pingInterval);
+        }, 30_000);
+        socket.on('close', () => clearInterval(pingInterval));
+
         socket.send(JSON.stringify({ type: 'connected', sessionId }));
         return;
       }
@@ -179,6 +185,14 @@ export const terminalRoutes: FastifyPluginAsync = async (app) => {
           writeToSession(sessionId, raw.toString());
         }
       });
+
+      // Keep-alive ping every 30s to prevent Tailscale Funnel (and other
+      // reverse proxies) from dropping idle WebSocket connections.
+      const pingInterval = setInterval(() => {
+        if (socket.readyState === 1 /* OPEN */) socket.ping();
+        else clearInterval(pingInterval);
+      }, 30_000);
+      socket.on('close', () => clearInterval(pingInterval));
 
       socket.send(JSON.stringify({ type: 'connected', sessionId }));
     })().catch((err) => {

@@ -80,7 +80,10 @@ export function SkillSuggestBar({ projectPath }: SkillSuggestBarProps) {
   }, []);
 
   const isSlashMode = inputBuffer.startsWith('/');
-  const slashQuery = isSlashMode ? inputBuffer.slice(1) : '';
+  // Only match the command name (before first space), not the arguments
+  const slashRaw = isSlashMode ? inputBuffer.slice(1) : '';
+  const spaceIdx = slashRaw.indexOf(' ');
+  const slashQuery = spaceIdx >= 0 ? slashRaw.slice(0, spaceIdx) : slashRaw;
   // Always show more when skills have been clicked (user is exploring)
   const limit = expanded ? 20 : clickedSkillIds.length > 0 ? 8 : 5;
 

@@ -463,31 +463,52 @@ function tmuxArgsForSession(sessionId: string): string[] {
   return tmuxBaseArgs;
 }
 
-/** Check if a tmux session is alive on any server (octoally, hivecommand, openflow) */
+/** Check if a tmux session is alive on any server (octoally, hivecommand, openflow).
+ *  Retries once per server after 300ms to handle transient socket states. */
 async function tmuxExistsAsync(sessionId: string): Promise<boolean> {
   const name = tmuxSessionName(sessionId);
   for (const server of [TMUX_SERVER, ...LEGACY_TMUX_SERVERS]) {
     try {
       await execFileAsync('tmux', ['-L', server, 'has-session', '-t', name]);
       return true;
-    } catch { /* try next */ }
+    } catch {
+      // Retry once — tmux socket may be momentarily unavailable after server restart
+      try {
+        await new Promise(r => setTimeout(r, 300));
+        await execFileAsync('tmux', ['-L', server, 'has-session', '-t', name]);
+        tlog(`[RECONNECT] tmux session ${sessionId} found on retry (server: ${server})`);
+        return true;
+      } catch { /* genuinely not on this server */ }
+    }
   }
   return false;
 }
 
-/** List all OctoAlly tmux session IDs that are still alive (checks legacy servers too) */
+/** List all OctoAlly tmux session IDs that are still alive (checks legacy servers too).
+ *  If a server query fails, retries once after a short delay to handle transient
+ *  states (e.g. tmux server socket not yet ready after a systemd restart). */
 function tmuxListOctoallySessionIds(): string[] {
   const ids = new Set<string>();
   for (const server of [TMUX_SERVER, ...LEGACY_TMUX_SERVERS]) {
+    let output: string | undefined;
     try {
-      const output = execFileSync('tmux', ['-L', server, 'list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' });
+      output = execFileSync('tmux', ['-L', server, 'list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' });
+    } catch {
+      // Retry once after 500ms — tmux server socket may be in a transient state
+      try {
+        execFileSync('sleep', ['0.5']);
+        output = execFileSync('tmux', ['-L', server, 'list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' });
+        tlog(`[CLEANUP] tmux server '${server}' responded on retry`);
+      } catch { /* server genuinely not running */ }
+    }
+    if (output) {
       output
         .trim()
         .split('\n')
         .filter(name => name.startsWith('of-'))
         .map(name => name.replace('of-', ''))
         .forEach(id => ids.add(id));
-    } catch { /* server not running */ }
+    }
   }
   return [...ids];
 }
@@ -1635,17 +1656,28 @@ export function getSessionTmuxServer(sessionId: string): string {
  * Gracefully shut down on server restart.
  * Preserves tmux sessions so they can be reconnected on next startup.
  * Only kills worker processes (they get re-forked by autoReconnectDetachedSessions).
+ *
+ * Shutdown sequence:
+ * 1. Notify all WebSocket subscribers with 'server-restarting' (clients auto-reconnect)
+ * 2. Mark all sessions as 'detached' in DB (synchronous better-sqlite3, no flush needed)
+ * 3. SIGTERM workers with 3s grace period, then escalate to SIGKILL
+ * 4. Returns when all workers have exited
  */
-export function killAllSessions(): void {
+export async function killAllSessions(): Promise<void> {
   const db = getDb();
-  for (const [id, active] of activeSessions) {
-    // Kill the worker process only — leave tmux/dtach alive for reconnect.
-    // Do NOT send { type: 'kill' } — that tells the worker to kill tmux too.
-    try {
-      active.worker.kill('SIGKILL');
-    } catch { /* ignore */ }
+  const workerExitPromises: Promise<void>[] = [];
 
-    // Mark as detached so autoReconnectDetachedSessions picks them up on next startup
+  for (const [id, active] of activeSessions) {
+    // 1. Notify WebSocket subscribers so clients know to auto-reconnect
+    for (const ws of active.subscribers) {
+      try {
+        ws.send(JSON.stringify({ type: 'server-restarting' }));
+        ws.close(1012, 'server-restarting'); // 1012 = Service Restart
+      } catch { /* client may already be gone */ }
+    }
+
+    // 2. Mark as detached so autoReconnectDetachedSessions picks them up on next startup
+    //    (better-sqlite3 is synchronous — completes immediately, no flush needed)
     try {
       db.prepare(`
         UPDATE sessions SET status = 'detached', updated_at = datetime('now')
@@ -1653,6 +1685,54 @@ export function killAllSessions(): void {
       `).run(id);
     } catch { /* DB might already be closed */ }
 
+    // 3. SIGTERM the worker — give it time to detach tmux client & clean up FIFOs
+    const worker = active.worker;
+    try {
+      worker.kill('SIGTERM');
+    } catch { /* already dead */ }
+
+    // Track worker exit; escalate SIGTERM -> SIGKILL after 3s
+    const exitPromise = new Promise<void>((resolve) => {
+      if (worker.exitCode !== null || worker.signalCode !== null) {
+        resolve();
+        return;
+      }
+      const escalation = setTimeout(() => {
+        try { worker.kill('SIGKILL'); } catch { /* already dead */ }
+        // Give SIGKILL 200ms to take effect, then resolve regardless
+        setTimeout(() => resolve(), 200).unref();
+      }, 3000);
+      escalation.unref();
+      worker.once('exit', () => {
+        clearTimeout(escalation);
+        resolve();
+      });
+    });
+    workerExitPromises.push(exitPromise);
+
+    activeSessions.delete(id);
+  }
+
+  // Wait for all workers to exit (or be force-killed after 3s)
+  if (workerExitPromises.length > 0) {
+    await Promise.all(workerExitPromises);
+  }
+}
+
+/**
+ * Synchronous fallback for uncaught-exception handler where we cannot await.
+ * Uses SIGKILL since the process is crashing anyway.
+ */
+export function killAllSessionsSync(): void {
+  const db = getDb();
+  for (const [id, active] of activeSessions) {
+    try { active.worker.kill('SIGKILL'); } catch { /* ignore */ }
+    try {
+      db.prepare(`
+        UPDATE sessions SET status = 'detached', updated_at = datetime('now')
+        WHERE id = ? AND status IN ('running', 'pending')
+      `).run(id);
+    } catch { /* DB might already be closed */ }
     activeSessions.delete(id);
   }
 }
@@ -1681,6 +1761,13 @@ export async function cleanupStaleRunningSessions(): Promise<void> {
     `).all() as { id: string; pid: number; project_path: string | null }[];
 
     if (stale.length === 0) { tlog(`[CLEANUP] no stale sessions, done in ${Date.now() - t0}ms`); return; }
+
+    // Stabilization delay: after a systemd restart, tmux server sockets may take
+    // a moment to become queryable even though the tmux processes survived.
+    // Wait briefly before probing to avoid false negatives that would mark
+    // surviving sessions as 'failed'.
+    await new Promise(r => setTimeout(r, 750));
+    tlog(`[CLEANUP] post-stabilization delay, probing ${stale.length} sessions`);
 
     const t1 = Date.now();
     const aliveDtach = config.useDtach ? new Set(dtachListOctoallySessions()) : new Set<string>();
@@ -1912,6 +1999,12 @@ export async function autoReconnectDetachedSessions(): Promise<void> {
       batch.map(({ id }) => reconnectSession(id).finally(() => { _reconnectDone++; }))
     );
     reconnected += results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+
+    // Brief cooldown between batches to avoid overwhelming the system
+    // with concurrent worker forks + tmux operations
+    if (i + RECONNECT_BATCH_SIZE < detached.length) {
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
 
   _reconnecting = false;

@@ -239,6 +239,36 @@ export async function initProjects(): Promise<void> {
   }
 }
 
+async function ensureMcpJson(projectPath: string): Promise<string | null> {
+  const mcpJsonPath = join(projectPath, '.mcp.json');
+  if (existsSync(mcpJsonPath)) return null;
+
+  const mcpConfig = {
+    mcpServers: {
+      ruflo: {
+        command: 'npx',
+        args: ['-y', '@claude-flow/cli@latest', 'mcp', 'start'],
+        env: {
+          npm_config_update_notifier: 'false',
+          CLAUDE_FLOW_MODE: 'v3',
+          CLAUDE_FLOW_TOPOLOGY: 'hierarchical',
+          CLAUDE_FLOW_MAX_AGENTS: '4',
+          CLAUDE_FLOW_MEMORY_BACKEND: 'local',
+        },
+        autoStart: false,
+      },
+    },
+  };
+
+  try {
+    await mkdir(projectPath, { recursive: true });
+    await writeFile(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n', 'utf-8');
+    return mcpJsonPath;
+  } catch {
+    return null;
+  }
+}
+
 export const projectRoutes: FastifyPluginAsync = async (app) => {
   // List projects
   app.get('/projects', async () => {
@@ -273,6 +303,7 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
 
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
     await exportToConfig();
+    const mcpPlaced = await ensureMcpJson(path);
 
     return { ok: true, project };
   });

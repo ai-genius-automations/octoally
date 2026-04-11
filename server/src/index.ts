@@ -35,7 +35,7 @@ import {
   type FastifyTRPCPluginOptions,
 } from '@trpc/server/adapters/fastify';
 import type { AppRouter } from './trpc/router.js';
-import { killAllSessions, cleanupStaleRunningSessions, autoReconnectDetachedSessions, getReconnectStatus, startPendingSessionWatchdog } from './services/session-manager.js';
+import { killAllSessions, killAllSessionsSync, cleanupStaleRunningSessions, autoReconnectDetachedSessions, getReconnectStatus, startPendingSessionWatchdog } from './services/session-manager.js';
 import { config } from './config.js';
 import { appendFileSync, writeFileSync, readdirSync, existsSync, readFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -43,6 +43,10 @@ import { homedir } from 'os';
 const tlog = (s: string) => { try { appendFileSync('/tmp/octoally-timing.log', `[${new Date().toISOString()}] ${s}\n`); } catch {} };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Module-level ref so shutdown handler can close the server
+let serverApp: import('fastify').FastifyInstance | null = null;
+let shuttingDown = false;
 
 // Event loop lag detector — logs when the event loop is blocked for >100ms
 let _lagLast = Date.now();
@@ -93,6 +97,7 @@ async function start() {
       },
     },
   });
+  serverApp = app;
 
   // Clear timing log for fresh run
   try { writeFileSync('/tmp/octoally-timing.log', ''); } catch {}
@@ -567,17 +572,48 @@ start().catch((err) => {
   process.exit(1);
 });
 
-// Graceful shutdown — kill all PTY sessions
-function shutdown() {
-  console.log('\n🌊 Shutting down OctoAlly...');
-  killAllSessions();
+// Graceful shutdown — preserve sessions for reconnection after restart
+//
+// Sequence:
+// 1. Stop accepting new connections (app.close)
+// 2. Notify WS clients with 'server-restarting', mark sessions 'detached' in DB
+// 3. SIGTERM workers (3s grace) -> escalate to SIGKILL if hung
+// 4. Exit cleanly
+// 5. Hard timeout at 8s (under systemd's default 10s TimeoutStopSec)
+async function shutdown(signal: string) {
+  if (shuttingDown) return; // prevent double-shutdown from SIGINT+SIGTERM race
+  shuttingDown = true;
+
+  console.log(`\n🌊 Shutting down OctoAlly (${signal})...`);
+
+  // Hard timeout: force exit at 8s regardless (must fit under systemd's 10s)
+  const hardTimeout = setTimeout(() => {
+    console.error('🌊 Shutdown timed out after 8s — forcing exit');
+    process.exit(1);
+  }, 8000);
+  hardTimeout.unref();
+
+  try {
+    // 1. Stop accepting new HTTP/WS connections
+    if (serverApp) {
+      await serverApp.close();
+    }
+
+    // 2-3. Notify WS clients, mark DB, SIGTERM->SIGKILL workers
+    await killAllSessions();
+  } catch (err) {
+    console.error('Error during shutdown:', err);
+  }
+
+  console.log('🌊 Shutdown complete');
   process.exit(0);
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception — cleaning up sessions:', err);
-  killAllSessions();
+  // Cannot await in uncaught exception handler — use sync fallback
+  killAllSessionsSync();
   process.exit(1);
 });

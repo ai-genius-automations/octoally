@@ -755,19 +755,34 @@ process.on('message', async (msg: ParentMessage) => {
   }
 });
 
-// If the parent dies, clean up and exit
-process.on('disconnect', () => {
+/**
+ * Graceful detach: kill only the tmux attach client (PTY process), clean up
+ * pipe-pane, and exit. The underlying tmux session stays alive for reconnect.
+ * Called on both parent disconnect (crash) and SIGTERM (graceful shutdown).
+ */
+let cleaningUp = false;
+function gracefulDetach(reason: string): void {
+  if (cleaningUp) return; // prevent double cleanup
+  cleaningUp = true;
+
+  // Kill only the PTY process — for tmux sessions this is the `tmux attach`
+  // client, so killing it just detaches. The tmux server/session lives on.
   if (ptyProcess) {
     try { ptyProcess.kill('SIGTERM'); } catch { /* dead */ }
   }
-  if (currentSessionId) {
-    if (pipePaneStream) {
-      pipePaneStream.destroy();
-      cleanupPipePane(currentSessionId, pipePaneFifo ?? undefined);
-    }
+  if (currentSessionId && pipePaneStream) {
+    pipePaneStream.destroy();
+    cleanupPipePane(currentSessionId, pipePaneFifo ?? undefined);
   }
-  process.exit(0);
-});
+  // Brief delay so the PTY has time to process the signal before we exit
+  setTimeout(() => process.exit(0), 200);
+}
+
+// Parent process died (IPC channel closed)
+process.on('disconnect', () => gracefulDetach('parent-disconnect'));
+
+// Graceful shutdown signal from killAllSessions()
+process.on('SIGTERM', () => gracefulDetach('sigterm'));
 
 // Signal the parent that this worker is ready for messages
 send({ type: 'worker-ready' });
