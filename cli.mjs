@@ -172,6 +172,22 @@ function runInstallOrUpdate(version) {
     stdio: "inherit",
   });
 
+  // Verify native modules load on the current Node. If npm pulled prebuilt
+  // binaries that don't match this Node's NODE_MODULE_VERSION (happens when
+  // the user's Node version differs from what the prebuilt targets), rebuild
+  // from source. Works on Linux and macOS.
+  try {
+    execSync(`node -e "require('better-sqlite3'); require('node-pty-prebuilt-multiarch')"`, {
+      cwd: join(INSTALL_DIR, "server"),
+      stdio: "pipe",
+    });
+  } catch {
+    log(CYAN, "Rebuilding native modules for current Node...");
+    execSync(`npm rebuild better-sqlite3 node-pty-prebuilt-multiarch --prefix "${INSTALL_DIR}/server"`, {
+      stdio: "inherit",
+    });
+  }
+
   // Setup CLI symlink
   execSync(`chmod +x "${LOCAL_CLI}"`, { stdio: "pipe" });
   const binDir = join(homedir(), ".local", "bin");

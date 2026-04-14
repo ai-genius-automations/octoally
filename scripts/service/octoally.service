@@ -6,7 +6,8 @@ After=network.target
 Type=simple
 User=__USER__
 WorkingDirectory=__OCTOALLY_DIR__/server
-ExecStart=/usr/bin/node dist/index.js
+ExecStartPre=/bin/sh -c '__NODE_BIN__ -e "require(\'better-sqlite3\'); require(\'node-pty-prebuilt-multiarch\')" 2>/dev/null || "$(dirname __NODE_BIN__)/npm" rebuild better-sqlite3 node-pty-prebuilt-multiarch'
+ExecStart=__NODE_BIN__ dist/index.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production

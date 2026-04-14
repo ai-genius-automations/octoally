@@ -1,6 +1,6 @@
 {
   "name": "octoally",
-  "version": "1.0.64",
+  "version": "1.0.66",
   "description": "AI coding session orchestration dashboard — launch, monitor, and manage Claude Code & OpenAI Codex sessions from a web UI",
   "type": "module",
   "bin": {

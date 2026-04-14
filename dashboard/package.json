@@ -1,7 +1,7 @@
 {
   "name": "@octoally/dashboard",
   "private": true,
-  "version": "1.0.64",
+  "version": "1.0.66",
   "description": "OctoAlly dashboard — React + Vite frontend",
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",

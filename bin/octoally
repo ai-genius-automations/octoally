@@ -63,6 +63,20 @@ cmd_start() {
   log_info "Starting OctoAlly server..."
   mkdir -p "$OCTOALLY_DIR/logs"
   cd "$OCTOALLY_DIR/server"
+
+  # Native module guard: if native modules fail to load (e.g., Node version
+  # changed since install via apt/brew/nvm, causing NODE_MODULE_VERSION mismatch),
+  # rebuild them against the current Node. Works on Linux and macOS.
+  if ! node -e "require('better-sqlite3'); require('node-pty-prebuilt-multiarch')" >/dev/null 2>&1; then
+    log_warn "Native module mismatch — rebuilding for current Node..."
+    if npm rebuild better-sqlite3 node-pty-prebuilt-multiarch >> "$OCTOALLY_DIR/logs/octoally.log" 2>&1; then
+      log_ok "Rebuild complete"
+    else
+      log_error "Rebuild failed — see $OCTOALLY_DIR/logs/octoally.log"
+      exit 1
+    fi
+  fi
+
   env NODE_ENV=production node dist/index.js >> "$OCTOALLY_DIR/logs/octoally.log" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
@@ -332,6 +346,15 @@ cmd_install_service() {
   local real_user="${SUDO_USER:-${PKEXEC_UID:+$(id -un "$PKEXEC_UID")}}"
   real_user="${real_user:-$(whoami)}"
 
+  # Resolve the node binary path at install time — must be absolute since
+  # systemd/launchd run with minimal PATH. Respects nvm/fnm/volta/brew/etc.
+  local node_bin
+  node_bin="$(command -v node 2>/dev/null || echo /usr/bin/node)"
+  if [ ! -x "$node_bin" ]; then
+    log_error "Could not resolve node binary (tried: $node_bin)"
+    exit 1
+  fi
+
   if [ "$OS" = "linux" ]; then
     log_info "Installing systemd service..."
     local service_file="$OCTOALLY_DIR/scripts/service/octoally.service"
@@ -340,8 +363,8 @@ cmd_install_service() {
       exit 1
     fi
     local target="/etc/systemd/system/octoally.service"
-    sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$real_user|g" "$service_file" > "$target" 2>/dev/null \
-      || sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$real_user|g" "$service_file" | sudo tee "$target" > /dev/null
+    sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$real_user|g; s|__NODE_BIN__|$node_bin|g" "$service_file" > "$target" 2>/dev/null \
+      || sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$real_user|g; s|__NODE_BIN__|$node_bin|g" "$service_file" | sudo tee "$target" > /dev/null
     if [ "$(id -u)" = "0" ]; then
       systemctl daemon-reload
       systemctl enable octoally
@@ -363,7 +386,7 @@ cmd_install_service() {
     fi
     mkdir -p "$OCTOALLY_DIR/logs"
     local target="$HOME/Library/LaunchAgents/com.aigenius.octoally.plist"
-    sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$(whoami)|g" "$plist_file" > "$target"
+    sed "s|__OCTOALLY_DIR__|$OCTOALLY_DIR|g; s|__USER__|$(whoami)|g; s|__NODE_BIN__|$node_bin|g" "$plist_file" > "$target"
     launchctl load "$target"
     log_ok "Launchd service installed and started"
     log_info "Manage with: launchctl {load|unload} $target"

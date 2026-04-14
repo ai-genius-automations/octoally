@@ -7,8 +7,9 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/node</string>
-    <string>__OCTOALLY_DIR__/server/dist/index.js</string>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>(__NODE_BIN__ -e "require('better-sqlite3'); require('node-pty-prebuilt-multiarch')" 2&gt;/dev/null || "$(dirname __NODE_BIN__)/npm" rebuild better-sqlite3 node-pty-prebuilt-multiarch) &amp;&amp; exec __NODE_BIN__ __OCTOALLY_DIR__/server/dist/index.js</string>
   </array>
 
   <key>WorkingDirectory</key>
