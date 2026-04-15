@@ -62,7 +62,7 @@ export function Terminal({ sessionId, visible = true, suspended = false, passive
     queryFn: () => api.settings.get(),
     staleTime: 30_000,
   });
-  const configuredFontSize = Number(settingsData?.settings?.terminal_font_size) || 13;
+  const configuredFontSize = Number(settingsData?.settings?.terminal_font_size) || 12;
   const [showHistory, setShowHistory] = useState(false);
 
   // Expose connect/disconnect so the suspension effect can control it

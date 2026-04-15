@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Project, type RufloAgent } from '../lib/api';
 import { Play, Loader2, Bot, TerminalSquare, Globe, Users, X, FolderOpen, GitBranch, Cpu, Activity, FileText, Zap } from 'lucide-react';
 import { ClaudeIcon, CodexIcon } from './CliIcons';
-import { AgentGuideModal } from './AgentGuide';
 import { SessionMicButton } from './SessionMicButton';
 
 interface SessionLauncherProps {
@@ -269,7 +268,6 @@ function TaskModal({
 
 export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }: SessionLauncherProps) {
   const [webUrl, setWebUrl] = useState('');
-  const [showOpenClaw, setShowOpenClaw] = useState(false);
   const [launchMode, setLaunchMode] = useState<LaunchMode>(null);
   const queryClient = useQueryClient();
 
@@ -317,10 +315,6 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
     const mode = agentType ? 'agent' : 'session';
     createMutation.mutate({ task, mode, agentType, cliType });
   };
-
-  const ocPrompt = (project.openclaw_prompt ?? '').trim();
-  const sessionPromptVal = (project.session_prompt ?? '').trim();
-  const instructions = [sessionPromptVal, ocPrompt].filter(Boolean).join('\n\n') || undefined;
 
   // Fetch git status for project info (may fail if not a git repo)
   const { data: gitData, isError: gitError } = useQuery({
@@ -482,15 +476,6 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
             )}
             Launch Terminal
           </button>
-          <button
-            onClick={() => setShowOpenClaw(true)}
-            className={btnBase}
-            style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-            title="Get API command for OpenClaw or other bot agents"
-          >
-            <Bot className="w-4 h-4" />
-            Run with OpenClaw
-          </button>
         </div>
 
         {/* Web page section */}
@@ -562,16 +547,6 @@ export function SessionLauncher({ project, onSessionCreated, onWebPageCreated }:
             codexReady={true}
             onClose={() => setLaunchMode(null)}
             onLaunch={handleLaunch}
-          />
-        )}
-
-        {/* OpenClaw modal */}
-        {showOpenClaw && (
-          <AgentGuideModal
-            onClose={() => setShowOpenClaw(false)}
-            projectName={project.name}
-            projectPath={project.path}
-            additionalInstructions={instructions}
           />
         )}
 

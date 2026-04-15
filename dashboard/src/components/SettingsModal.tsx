@@ -61,7 +61,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [sessionCodexCmd, setSessionCodexCmd] = useState('');
   const [agentClaudeCmd, setAgentClaudeCmd] = useState('');
   const [agentCodexCmd, setAgentCodexCmd] = useState('');
-  const [fontSize, setFontSize] = useState('13');
+  const [fontSize, setFontSize] = useState('12');
   const [appFontSize, setAppFontSize] = useState('16');
   const [serverPort, setServerPort] = useState('42010');
   const [saved, setSaved] = useState(false);
@@ -73,7 +73,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setSessionCodexCmd(s.session_codex_command || '');
       setAgentClaudeCmd(s.agent_claude_command || '');
       setAgentCodexCmd(s.agent_codex_command || '');
-      setFontSize(s.terminal_font_size || '13');
+      setFontSize(s.terminal_font_size || '12');
       setAppFontSize(s.app_font_size || '16');
       setServerPort(s.server_port || '42010');
     }

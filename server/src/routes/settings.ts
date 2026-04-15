@@ -13,7 +13,7 @@ const DEFAULTS: Record<string, string> = {
   session_codex_command: 'codex',
   agent_claude_command: 'claude',
   agent_codex_command: 'codex',
-  terminal_font_size: '13',
+  terminal_font_size: '12',
   app_font_size: '16',
   server_port: '42010',
   ruflo_disposition: 'undecided',   // undecided | keep | remove_all | removed
