@@ -28,6 +28,12 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     return { sessions };
   });
 
+  // Scan ALL running claude processes system-wide (not limited to hivemind sockets)
+  app.get('/sessions/scan-all', async () => {
+    const sessions = await sessionManager.scanAllClaudeSessions();
+    return { sessions };
+  });
+
   // Adopt an external detached session into OctoAlly
   app.post<{
     Body: { socket_path: string; project_id?: string };

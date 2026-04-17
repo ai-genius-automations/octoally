@@ -36,6 +36,8 @@ export const api = {
       const qs = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
       return fetchJSON<{ sessions: DiscoverableSession[] }>(`/sessions/discoverable${qs}`);
     },
+    scanAll: () =>
+      fetchJSON<{ sessions: ScannedSession[] }>('/sessions/scan-all'),
     adopt: (socketPath: string, projectId?: string) =>
       fetchJSON<{ ok: boolean; session: Session }>('/sessions/adopt', {
         method: 'POST',
@@ -375,6 +377,14 @@ export interface ExecuteResult {
   output: string;
   durationMs: number;
   state: SessionStateResponse;
+}
+
+export interface ScannedSession {
+  pid: number;
+  projectPath: string;
+  sessionId: string;
+  task: string;
+  startedAt: string;
 }
 
 export interface DiscoverableSession {
