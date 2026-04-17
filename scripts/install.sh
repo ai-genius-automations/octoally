@@ -505,6 +505,84 @@ elif command -v lsof &>/dev/null; then
   fi
 fi
 
+# Catch stale octoally servers the port-based kill above missed. Port-based
+# detection is blind to any prior install bound to a non-default port — a
+# leftover server on 42011 (old default) or a dev-mode PORT=42012 survives
+# every subsequent upgrade. Mirrors octoally-pro's _kill_stale_pro_servers.
+#
+# CRITICAL: match "octoally/server" WITHOUT matching "octoally-pro/server".
+# Pro is a separate app with its own installer; we must never touch it. Every
+# pattern below either explicitly excludes "octoally-pro" or uses a case
+# ordering that short-circuits on it first. Verified against a machine running
+# both apps before shipping.
+_kill_stale_octoally_servers() {
+  local target_uid
+  target_uid=$(id -u "$TARGET_USER" 2>/dev/null || echo "")
+  [ -z "$target_uid" ] && return 0
+
+  local pids=""
+
+  # Pattern 1: pgrep cmdline match, then explicitly filter out Pro cmdlines.
+  # pgrep's regex doesn't do negative lookahead, so we post-filter instead.
+  if command -v pgrep >/dev/null 2>&1; then
+    for pid in $(pgrep -u "$target_uid" -f 'octoally/server/dist/index\.js' 2>/dev/null); do
+      local cl
+      cl=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || echo '')
+      case "$cl" in
+        *octoally-pro*) continue ;;
+      esac
+      pids="$pids $pid"
+    done
+  fi
+
+  # Pattern 2: Linux /proc/cwd — case ordering matters. Pro exclusion fires
+  # FIRST so "*/octoally-pro/server/*" short-circuits before it could match
+  # "*/octoally/server/*".
+  if [ -d /proc ]; then
+    for pid_dir in /proc/[0-9]*; do
+      local pid="${pid_dir##*/}"
+      [ "$pid" = "$$" ] && continue
+      [ "$pid" = "$PPID" ] && continue
+      local p_uid
+      p_uid=$(stat -c %u "$pid_dir" 2>/dev/null || echo "-1")
+      [ "$p_uid" = "$target_uid" ] || continue
+      local cwd
+      cwd=$(readlink "$pid_dir/cwd" 2>/dev/null || true)
+      case "$cwd" in
+        */octoally-pro/*) continue ;;
+        */octoally/server|*/octoally/server/*) ;;
+        *) continue ;;
+      esac
+      local cmdline
+      cmdline=$(tr '\0' ' ' < "$pid_dir/cmdline" 2>/dev/null || true)
+      case "$cmdline" in
+        *pty-worker*) continue ;;
+        *octoally-pro*) continue ;;
+        *node*dist/index.js*) pids="$pids $pid" ;;
+      esac
+    done
+  fi
+
+  pids=$(echo "$pids" | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+  [ -z "$pids" ] && return 0
+
+  for pid in $pids; do
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "$PPID" ] && continue
+    log_info "Stopping stale octoally server (PID $pid)..."
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 2
+  for pid in $pids; do
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "$PPID" ] && continue
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  done
+}
+_kill_stale_octoally_servers
+
 # Kill running desktop app — SIGTERM first, then SIGKILL after 1s.
 # Electron hangs on close when the server is dead (webview stuck reconnecting).
 # Kill both old (hivecommand-desktop) and new (octoally-desktop) process names.
