@@ -41,6 +41,28 @@ get_local_version() {
   fi
 }
 
+# Version of the separately-packaged desktop binary, if installed. Returns
+# empty when no desktop app is present. We check this alongside the server
+# version in `update` so a partial release (e.g. desktop build flaked on CI
+# while the server tarball published) doesn't leave the user stuck on the
+# old desktop forever.
+get_desktop_version() {
+  case "$(uname -s)" in
+    Linux*)
+      dpkg-query -W -f='${Version}' octoally-desktop 2>/dev/null || echo ""
+      ;;
+    Darwin*)
+      local plist="/Applications/OctoAlly.app/Contents/Info.plist"
+      if [ -f "$plist" ]; then
+        /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$plist" 2>/dev/null || echo ""
+      else
+        echo ""
+      fi
+      ;;
+    *) echo "" ;;
+  esac
+}
+
 detect_os() {
   case "$(uname -s)" in
     Linux*)  echo "linux" ;;
@@ -312,26 +334,34 @@ cmd_status() {
   fi
 
   # Check for updates via GitHub releases
-  local latest_info latest_version release_name
+  local latest_info latest_version release_name desktop_version
   latest_info=$(get_latest_github_version)
+  desktop_version=$(get_desktop_version)
   if [ -n "$latest_info" ]; then
     latest_version=$(echo "$latest_info" | cut -d'|' -f1)
     release_name=$(echo "$latest_info" | cut -d'|' -f2-)
-    if [ -n "$latest_version" ] && [ "$latest_version" != "$version" ]; then
+    local server_behind=false desktop_behind=false
+    [ -n "$latest_version" ] && [ "$latest_version" != "$version" ] && server_behind=true
+    [ -n "$latest_version" ] && [ -n "$desktop_version" ] && [ "$latest_version" != "$desktop_version" ] && desktop_behind=true
+    if [ "$server_behind" = true ] || [ "$desktop_behind" = true ]; then
       echo -e "  Update:          ${YELLOW}v${latest_version} available${NC} (run: octoally update)"
       [ -n "$release_name" ] && echo "                   $release_name"
+      [ "$server_behind"  = true ] && echo "                   server: v${version}"
+      [ "$desktop_behind" = true ] && echo "                   desktop: v${desktop_version}"
     else
       echo "  Update:          up to date"
     fi
   fi
+  [ -n "$desktop_version" ] && echo "  Desktop app:     v${desktop_version}"
   return 0
 }
 
 cmd_update() {
   log_info "Checking for updates via GitHub..."
 
-  local local_version
+  local local_version desktop_version
   local_version=$(get_local_version)
+  desktop_version=$(get_desktop_version)
 
   local latest_info latest_version release_name
   latest_info=$(get_latest_github_version)
@@ -348,12 +378,30 @@ cmd_update() {
     exit 1
   fi
 
-  if [ "$latest_version" = "$local_version" ]; then
+  # A component is "up to date" only if BOTH server and desktop match the
+  # latest release. A partial update — server bumped while desktop binaries
+  # weren't published yet — previously left `update` reporting "already up
+  # to date" while the desktop silently stayed a version behind.
+  local server_up_to_date=false desktop_up_to_date=false
+  [ "$latest_version" = "$local_version" ] && server_up_to_date=true
+  if [ -z "$desktop_version" ]; then
+    desktop_up_to_date=true   # no desktop installed — nothing to lag
+  elif [ "$latest_version" = "$desktop_version" ]; then
+    desktop_up_to_date=true
+  fi
+
+  if [ "$server_up_to_date" = true ] && [ "$desktop_up_to_date" = true ]; then
     log_ok "Already up to date (v$local_version)"
     return 0
   fi
 
-  log_info "Update available: v$local_version -> v$latest_version"
+  if [ "$server_up_to_date" = true ] && [ "$desktop_up_to_date" = false ]; then
+    log_info "Server is current (v$local_version) but desktop app is v$desktop_version — catching up to v$latest_version"
+  else
+    log_info "Update available: v$local_version -> v$latest_version"
+    [ -n "$desktop_version" ] && [ "$desktop_version" != "$local_version" ] \
+      && log_info "  Desktop app currently at v$desktop_version"
+  fi
 
   # Ask before proceeding if interactive
   if [ -t 0 ] && [ -t 1 ]; then
