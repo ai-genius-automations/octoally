@@ -37,3 +37,7 @@ CLAUDE.md.*.bak
 
 # Claude Code local config
 CLAUDE.local.md
+# OctoAlly context files
+.octoally-pro/
+# OctoAlly-generated agents manifest
+AGENTS.md
