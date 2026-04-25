@@ -8,7 +8,7 @@ import { FileExplorer } from './FileExplorer';
 import { GitPanel } from './GitPanel';
 import { SessionLauncher } from './SessionLauncher';
 import { WebPageView } from './WebPageView';
-import { api } from '../lib/api';
+import { api, type ScannedSession } from '../lib/api';
 import { CloseTabModal } from './CloseTabModal';
 import { useShortcut, markKeyboardNav } from '../lib/shortcuts';
 
@@ -168,6 +168,18 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     enabled: false, // on-demand only — triggered by user clicking "Scan"
   });
   const discoverableSessions = discoverableData?.sessions || [];
+
+  // Scan ALL claude processes system-wide (on-demand, no polling)
+  const { data: scanAllData, refetch: refetchScanAll, isFetching: isScanningAll } = useQuery({
+    queryKey: ['scan-all-sessions'],
+    queryFn: () => api.sessions.scanAll(),
+    enabled: false,
+  });
+  const [showScanAllMenu, setShowScanAllMenu] = useState(false);
+  const [scanAllDone, setScanAllDone] = useState(false);
+  const scanAllMenuRef = useRef<HTMLDivElement>(null);
+  const scanAllDropdownRef = useRef<HTMLDivElement>(null);
+  const scannedSessions: ScannedSession[] = scanAllData?.sessions || [];
 
   // Terminal instances — restored from persisted state + synced with server sessions
   const [terminalInstances, setTerminalInstances] = useState<TerminalInstance[]>(
@@ -633,6 +645,38 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showAdoptMenu]);
+
+  async function handleResumeExternal(s: ScannedSession) {
+    setShowScanAllMenu(false);
+    try {
+      const result = await api.sessions.resumeExternal(
+        s.pid,
+        s.sessionId,
+        s.projectPath,
+        s.task,
+        s.projectPath === projectPath ? projectId : undefined,
+      );
+      const sid = result.session.id;
+      await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['scan-all-sessions'] });
+      handleSessionCreated(sid, undefined, 'session');
+    } catch (err) {
+      console.error('Failed to resume external session:', err);
+    }
+  }
+
+  // Close scan-all menu on outside click
+  useEffect(() => {
+    if (!showScanAllMenu) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (scanAllMenuRef.current?.contains(target)) return;
+      if (scanAllDropdownRef.current?.contains(target)) return;
+      setShowScanAllMenu(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showScanAllMenu]);
 
   async function handleAdoptSession(socketPath: string) {
     setShowAdoptMenu(false);
@@ -1184,6 +1228,124 @@ export function ProjectView({ projectId, projectPath, projectName: _projectName,
                               <div className="truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                                 {s.startedAt ? new Date(s.startedAt + (String(s.startedAt).endsWith('Z') ? '' : 'Z')).toLocaleString() : 'unknown time'}
                               </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>,
+                    document.body
+                  )}
+                </div>
+
+                {/* Scan everywhere — red button, scans all claude processes via /proc */}
+                <div ref={scanAllMenuRef}>
+                  <button
+                    onClick={async () => {
+                      if (showScanAllMenu) {
+                        setShowScanAllMenu(false);
+                      } else {
+                        setScanAllDone(false);
+                        await refetchScanAll();
+                        setScanAllDone(true);
+                        setShowScanAllMenu(true);
+                      }
+                    }}
+                    className="flex items-center gap-1 px-2 rounded-md shrink-0 transition-colors text-xs"
+                    title="Scan everywhere — find all running claude sessions system-wide"
+                    style={{
+                      height: 28,
+                      color: isScanningAll ? '#f87171' : showScanAllMenu ? '#ef4444' : '#f87171',
+                      background: showScanAllMenu ? 'rgba(239,68,68,0.12)' : 'transparent',
+                      border: '1px solid rgba(239,68,68,0.35)',
+                    }}
+                  >
+                    {isScanningAll ? (
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+                      </svg>
+                    )}
+                    {!isScanningAll && scannedSessions.length > 0 && (
+                      <span
+                        className="text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                        style={{ background: '#ef4444', color: '#fff' }}
+                      >
+                        {scannedSessions.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {showScanAllMenu && createPortal(
+                    <div
+                      ref={scanAllDropdownRef}
+                      className="fixed rounded-lg shadow-lg border z-[9999] min-w-[320px] max-w-[460px] py-1"
+                      style={{
+                        background: 'var(--bg-primary)',
+                        borderColor: 'rgba(239,68,68,0.4)',
+                        top: (scanAllMenuRef.current?.getBoundingClientRect().bottom ?? 0) + 4,
+                        left: scanAllMenuRef.current?.getBoundingClientRect().left ?? 0,
+                      }}
+                    >
+                      <div className="flex items-center justify-between px-3 py-1.5">
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-wider"
+                          style={{ color: '#ef4444' }}
+                        >
+                          All External Claude Sessions
+                        </span>
+                        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                          {scannedSessions.length} found
+                        </span>
+                      </div>
+                      <div className="mx-3 mb-1" style={{ height: 1, background: 'rgba(239,68,68,0.25)' }} />
+                      {scannedSessions.length === 0 ? (
+                        <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {scanAllDone ? 'No external claude sessions found.' : 'Scanning…'}
+                        </div>
+                      ) : (
+                        scannedSessions.map((s) => {
+                          const isCurrent = s.projectPath === projectPath;
+                          const shortPath = s.projectPath.replace(/^\/home\/[^/]+/, '~');
+                          return (
+                            <button
+                              key={s.pid}
+                              onClick={() => handleResumeExternal(s)}
+                              className="w-full text-left px-3 py-2 text-xs transition-colors"
+                              style={{
+                                color: 'var(--text-primary)',
+                                borderLeft: isCurrent ? '2px solid #ef4444' : '2px solid transparent',
+                                background: 'transparent',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239,68,68,0.07)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0"
+                                  style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
+                                >
+                                  PID {s.pid}
+                                </span>
+                                <span className="truncate font-medium">{s.task.slice(0, 70)}</span>
+                              </div>
+                              <div className="mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                                {shortPath}
+                                {isCurrent && (
+                                  <span className="ml-1.5 text-[9px] font-semibold" style={{ color: '#ef4444' }}>
+                                    ← this project
+                                  </span>
+                                )}
+                              </div>
+                              {s.startedAt && (
+                                <div className="mt-0.5" style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>
+                                  {new Date(s.startedAt).toLocaleString()} · click to resume in OctoAlly
+                                </div>
+                              )}
                             </button>
                           );
                         })

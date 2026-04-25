@@ -19,6 +19,7 @@ import { initSpeechListeners } from './lib/speech';
 import { onVoiceCommand } from './lib/voice-commands';
 import type { VoiceCommandPayload } from './lib/voice-commands';
 import { installShortcutDispatcher, useShortcut, useShortcutStore, markKeyboardNav } from './lib/shortcuts';
+import { InstallPWA } from './components/InstallPWA';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -563,6 +564,9 @@ function Dashboard() {
           </button>
         </div>
       )}
+
+      {/* PWA install prompt — only shown in browser (not Electron/Tauri) */}
+      <InstallPWA />
 
       {/* Tab bar */}
       <nav

@@ -1,7 +1,7 @@
 import { fork, execFile, execFileSync, spawn, type ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { createRequire } from 'module';
-import { readFile, readdirSync, readFileSync, writeFileSync as fsWriteFileSync, existsSync, appendFileSync } from 'fs';
+import { readFile, readdirSync, readFileSync, writeFileSync as fsWriteFileSync, existsSync, appendFileSync, statSync, readlinkSync, openSync, readSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -136,6 +136,7 @@ interface PendingSpawn {
   projectId?: string;
   socketPath?: string;  // for adopt mode
   cliType?: 'claude' | 'codex';
+  resumeSessionId?: string;  // for --resume <id> when resuming external sessions
 }
 const pendingSpawns = new Map<string, PendingSpawn>();
 
@@ -865,7 +866,7 @@ export function createSession(_projectPath: string, task: string, projectId?: st
   return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as Session;
 }
 
-export async function spawnSession(sessionId: string, projectPath: string, task: string, cols = 180, rows = 40, cliType: 'claude' | 'codex' = 'claude'): Promise<void> {
+export async function spawnSession(sessionId: string, projectPath: string, task: string, cols = 180, rows = 40, cliType: 'claude' | 'codex' = 'claude', resumeSessionId?: string): Promise<void> {
   const preSpawnFiles = snapshotClaudeSessionFiles(projectPath);
 
   const worker = await forkWorker();
@@ -882,6 +883,11 @@ export async function spawnSession(sessionId: string, projectPath: string, task:
   const proj = getDb().prepare('SELECT skip_permissions FROM projects WHERE path = ?').get(projectPath) as { skip_permissions: number } | undefined;
   if (proj?.skip_permissions && cliType === 'claude' && !sessionCommand.includes('--dangerously-skip-permissions')) {
     sessionCommand += ' --dangerously-skip-permissions';
+  }
+
+  // Resume an existing claude session by ID (e.g. adopted from external process)
+  if (resumeSessionId && cliType === 'claude') {
+    sessionCommand += ` --resume ${resumeSessionId}`;
   }
 
   // Tell the worker to spawn the session
@@ -2036,6 +2042,143 @@ export async function discoverExternalSessions(projectPath?: string): Promise<Di
   } catch { /* db read failed */ }
 
   return results;
+}
+
+export interface ScannedSession {
+  pid: number;
+  projectPath: string;
+  sessionId: string;
+  task: string;
+  startedAt: string;
+}
+
+// Scan /proc for ALL running claude processes not owned by OctoAlly,
+// then look up their session info from ~/.claude/projects/ JSONL files.
+export async function scanAllClaudeSessions(): Promise<ScannedSession[]> {
+  const results: ScannedSession[] = [];
+  const claudeProjectsDir = join(homedir(), '.claude', 'projects');
+
+  let procEntries: string[];
+  try {
+    procEntries = readdirSync('/proc').filter(d => /^\d+$/.test(d));
+  } catch {
+    return results;
+  }
+
+  for (const pidStr of procEntries) {
+    const pid = parseInt(pidStr, 10);
+    try {
+      // Check cmdline arg[0] is 'claude'
+      const cmdlineRaw = readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+      const arg0 = cmdlineRaw.split('\0')[0] || '';
+      if (arg0 !== 'claude' && !arg0.endsWith('/claude')) continue;
+
+      // Skip OctoAlly-owned sessions
+      const environ = readFileSync(`/proc/${pid}/environ`, 'utf8');
+      if (
+        environ.includes('OCTOALLY_SESSION=') ||
+        environ.includes('HIVECOMMAND_SESSION=') ||
+        environ.includes('OPENFLOW_SESSION=')
+      ) continue;
+
+      // Get working directory
+      const cwd = readlinkSync(`/proc/${pid}/cwd`);
+
+      // Find the corresponding ~/.claude/projects/ directory
+      const encodedPath = cwd.replace(/\//g, '-');
+      const projectDir = join(claudeProjectsDir, encodedPath);
+      if (!existsSync(projectDir)) continue;
+
+      // Find the most recently modified JSONL — that's the active session
+      const jsonlFiles = readdirSync(projectDir)
+        .filter(f => f.endsWith('.jsonl'))
+        .map(f => {
+          try {
+            return { name: f, mtime: statSync(join(projectDir, f)).mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => b!.mtime - a!.mtime) as { name: string; mtime: number }[];
+
+      if (jsonlFiles.length === 0) continue;
+
+      const sessionId = jsonlFiles[0].name.replace('.jsonl', '');
+
+      // Skip sessions already tracked inside OctoAlly
+      if (activeSessions.has(sessionId)) continue;
+
+      // Read just the first 8 KB to find the task (first user message)
+      let task = '(unknown task)';
+      let startedAt = '';
+      try {
+        const jsonlPath = join(projectDir, jsonlFiles[0].name);
+        const fd = openSync(jsonlPath, 'r');
+        const buf = Buffer.alloc(8192);
+        const bytesRead = readSync(fd, buf, 0, 8192, 0);
+        closeSync(fd);
+        const sample = buf.slice(0, bytesRead).toString('utf8');
+        const lines = sample.split('\n');
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line);
+            if (!startedAt && obj.timestamp) startedAt = obj.timestamp;
+            if (obj.type === 'user' && obj.message?.role === 'user') {
+              const content = obj.message.content;
+              if (typeof content === 'string' && content.trim().length > 5) {
+                task = content.trim().slice(0, 120);
+                break;
+              } else if (Array.isArray(content)) {
+                for (const c of content) {
+                  if (c?.type === 'text' && typeof c.text === 'string' && c.text.trim().length > 5) {
+                    task = c.text.trim().slice(0, 120);
+                    break;
+                  }
+                }
+                if (task !== '(unknown task)') break;
+              }
+            }
+          } catch { /* skip malformed line */ }
+        }
+      } catch { /* couldn't read JSONL */ }
+
+      results.push({ pid, projectPath: cwd, sessionId, task, startedAt });
+    } catch { /* process gone or unreadable */ }
+  }
+
+  return results;
+}
+
+// Kill an external claude process and resume its conversation inside OctoAlly.
+// Returns the new OctoAlly session so the caller can register it as a tab.
+export async function resumeExternalSession(
+  pid: number,
+  externalSessionId: string,
+  projectPath: string,
+  task: string,
+  projectId?: string,
+): Promise<Session> {
+  // Gracefully stop the external process so it flushes its state before we resume
+  try {
+    process.kill(pid, 'SIGTERM');
+    // Give claude up to 1.5 s to write its shutdown checkpoint
+    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+  } catch { /* already dead */ }
+
+  const session = createSession(projectPath, task, projectId);
+  registerPendingSpawn(session.id, {
+    projectPath,
+    task,
+    mode: 'session',
+    projectId,
+    cliType: 'claude',
+    resumeSessionId: externalSessionId,
+  });
+
+  pushSystemEvent(`[OctoAlly] Resuming external session ${externalSessionId}: ${task.slice(0, 60)}`);
+  return session;
 }
 
 export async function adoptDtachSession(socketPath: string, projectId?: string): Promise<Session | null> {
