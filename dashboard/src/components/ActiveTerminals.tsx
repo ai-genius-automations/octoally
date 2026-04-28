@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Session, Project } from '../lib/api';
 import { Terminal } from './Terminal';
-import { Monitor, ArrowLeft, ExternalLink, Minimize2, Maximize2, ChevronDown, X, Columns3, Rows3, Zap, Bot, TerminalSquare } from 'lucide-react';
+import { Monitor, ArrowLeft, ExternalLink, Minimize2, Maximize2, ChevronDown, X, Columns3, Rows3, Zap, Bot, TerminalSquare, Minus } from 'lucide-react';
 import { ClaudeIcon, CodexIcon } from './CliIcons';
 
 interface ActiveTerminalsProps {
@@ -27,6 +27,7 @@ interface ExpandedSession {
 
 const COLUMNS_KEY = 'octoally-active-terminals-cols';
 const ROWS_KEY = 'octoally-active-terminals-rows';
+const MINIMIZED_KEY = 'octoally-active-terminals-minimized';
 
 export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenSessionIds }: ActiveTerminalsProps) {
   const queryClient = useQueryClient();
@@ -45,6 +46,16 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
     if (!saved || saved === 'auto') return 'auto';
     return Math.min(6, Math.max(1, parseInt(saved, 10) || 2));
   });
+  const [minimizedSessionIds, setMinimizedSessionIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(MINIMIZED_KEY);
+      if (!saved) return new Set();
+      const arr = JSON.parse(saved);
+      return new Set(Array.isArray(arr) ? (arr as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -57,6 +68,18 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
   useEffect(() => {
     localStorage.setItem(ROWS_KEY, String(rows));
   }, [rows]);
+  // Persist minimized IDs. We compute the alive set inside the effect from the
+  // ref-stable query cache instead of taking activeSessions as a dependency —
+  // activeSessions changes identity on every poll, which would re-run the effect
+  // unnecessarily. The localStorage write is idempotent so this is safe.
+  useEffect(() => {
+    const sessions = (queryClient.getQueryData(['sessions']) as { sessions?: Session[] } | undefined)?.sessions ?? [];
+    const aliveIds = new Set(
+      sessions.filter((s) => s.status === 'running' || s.status === 'detached').map((s) => s.id),
+    );
+    const valid = [...minimizedSessionIds].filter((id) => aliveIds.has(id));
+    localStorage.setItem(MINIMIZED_KEY, JSON.stringify(valid));
+  }, [minimizedSessionIds, queryClient]);
 
   // Calculate card height: row-count mode divides container height, auto uses 16:9 ratio
   useEffect(() => {
@@ -142,13 +165,51 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
 
   const groups = Array.from(groupMap.values());
 
-  const cards: { session: Session; groupLabel: string; projectId: string | null }[] = [];
+  const allCards: { session: Session; groupLabel: string; projectId: string | null }[] = [];
   for (const group of groups) {
     for (const session of group.sessions) {
-      cards.push({ session, groupLabel: group.label, projectId: group.projectId });
+      allCards.push({ session, groupLabel: group.label, projectId: group.projectId });
     }
   }
-  cards.sort((a, b) => a.groupLabel.localeCompare(b.groupLabel));
+  allCards.sort((a, b) => a.groupLabel.localeCompare(b.groupLabel));
+
+  // Split into visible cards (rendered in grid) and minimized cards (rendered in tray).
+  // Minimized cards keep their server-side PTY alive — we just unmount the Terminal,
+  // and the WebSocket replays scrollback when the user restores them.
+  const cards = allCards.filter((c) => !minimizedSessionIds.has(c.session.id));
+  const minimizedCards = allCards.filter((c) => minimizedSessionIds.has(c.session.id));
+
+  // Note: stale IDs in `minimizedSessionIds` (sessions that died while minimized)
+  // are filtered out at derivation time (minimizedCards above) so they never
+  // surface in the UI. We don't reconcile the in-memory Set in an effect to
+  // avoid cascading renders — the persistence effect below strips dead IDs
+  // before writing to localStorage, so storage stays clean across reloads.
+
+  const minimize = useCallback((sessionId: string) => {
+    setFocusedSessionId((cur) => (cur === sessionId ? null : cur));
+    setMinimizedSessionIds((prev) => {
+      if (prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.add(sessionId);
+      return next;
+    });
+  }, []);
+
+  const restore = useCallback((sessionId: string) => {
+    setMinimizedSessionIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setFocusedSessionId(sessionId);
+    // Force a refit once the card has had a frame to lay out
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('octoally:refresh-terminal', {
+        detail: { sessionId },
+      }));
+    }, 50);
+  }, []);
 
   // Dispatch refresh-terminal for all cards once after mount for reliable refit
   useEffect(() => {
@@ -381,6 +442,87 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
         )}
       </div>
 
+      {/* Minimized tray — sessions kept alive on the server but hidden from the grid */}
+      {minimizedCards.length > 0 && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b shrink-0 flex-wrap"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}
+        >
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wide shrink-0"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            Minimized · {minimizedCards.length}
+          </span>
+          {minimizedCards.map(({ session, groupLabel }) => {
+            const isTerminal = session.task === 'Terminal';
+            const isAgent = session.task.startsWith('Agent (');
+            const isCodex = (session as Session & { cli_type?: string }).cli_type === 'codex';
+            return (
+              <div
+                key={session.id}
+                className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md border"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-tertiary)' }}
+              >
+                {isTerminal ? (
+                  <TerminalSquare className="w-3 h-3 shrink-0" style={{ color: '#f59e0b' }} />
+                ) : (
+                  <>
+                    {isCodex ? (
+                      <CodexIcon className="w-3 h-3 shrink-0" style={{ color: '#7A9DFF' }} />
+                    ) : (
+                      <ClaudeIcon className="w-3 h-3 shrink-0" style={{ color: '#D97757' }} />
+                    )}
+                    {isAgent ? (
+                      <Bot className="w-2.5 h-2.5 shrink-0" style={{ color: '#ef4444' }} />
+                    ) : (
+                      <Zap className="w-2.5 h-2.5 shrink-0" style={{ color: '#60a5fa' }} />
+                    )}
+                  </>
+                )}
+                <button
+                  onClick={() => restore(session.id)}
+                  className="flex items-center gap-1.5 text-xs font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                  title="Restore to grid"
+                >
+                  <span>{groupLabel}</span>
+                  <span style={{ color: 'var(--text-secondary)' }} className="max-w-[160px] truncate">
+                    {session.task || 'Terminal'}
+                  </span>
+                </button>
+                <div
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{
+                    background: session.status === 'running' ? 'var(--success)' : 'var(--warning)',
+                  }}
+                />
+                <button
+                  onClick={() => restore(session.id)}
+                  className="flex items-center justify-center w-5 h-5 rounded transition-colors hover:opacity-100 opacity-70"
+                  style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                  title="Restore to grid"
+                >
+                  <Maximize2 className="w-2.5 h-2.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    api.sessions.kill(session.id)
+                      .catch(() => {})
+                      .finally(() => queryClient.invalidateQueries({ queryKey: ['sessions'] }));
+                  }}
+                  className="flex items-center justify-center w-5 h-5 rounded transition-colors hover:opacity-100 opacity-70"
+                  style={{ background: '#ef4444', color: 'white' }}
+                  title="Kill session"
+                >
+                  <X className="w-3 h-3" strokeWidth={3} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Grid — always render the container so Terminal components don't get
           destroyed/recreated when the cards list changes between renders */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 relative">
@@ -389,7 +531,7 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
             <div className="text-center">
               <Monitor className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--text-secondary)', opacity: 0.4 }} />
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                No active sessions
+                {minimizedCards.length > 0 ? 'All sessions minimized' : 'No active sessions'}
               </p>
             </div>
           </div>
@@ -457,6 +599,14 @@ export function ActiveTerminals({ onBack, onGoToSession, openProjectIds, hiddenS
                       background: session.status === 'running' ? 'var(--success)' : 'var(--warning)',
                     }}
                   />
+                  <button
+                    onClick={() => minimize(session.id)}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors hover:opacity-100 opacity-70"
+                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                    title="Minimize to tray (keeps session alive)"
+                  >
+                    <Minus className="w-2.5 h-2.5" />
+                  </button>
                   <button
                     onClick={() => {
                       setFocusedSessionId(session.id);
