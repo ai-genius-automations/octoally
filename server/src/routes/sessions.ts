@@ -28,6 +28,24 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     return { sessions };
   });
 
+  // Resume an external claude process inside OctoAlly (kills the PID, resumes via --resume <id>)
+  app.post<{
+    Body: { pid: number; session_id: string; project_path: string; task: string; project_id?: string };
+  }>('/sessions/resume-external', async (req, reply) => {
+    const { pid, session_id, project_path, task, project_id } = req.body as any;
+    if (!pid || !session_id || !project_path) {
+      return reply.status(400).send({ error: 'pid, session_id, and project_path are required' });
+    }
+    const session = await sessionManager.resumeExternalSession(pid, session_id, project_path, task, project_id);
+    return { ok: true, session };
+  });
+
+  // Scan ALL running claude processes system-wide (not limited to hivemind sockets)
+  app.get('/sessions/scan-all', async () => {
+    const sessions = await sessionManager.scanAllClaudeSessions();
+    return { sessions };
+  });
+
   // Adopt an external detached session into OctoAlly
   app.post<{
     Body: { socket_path: string; project_id?: string };
