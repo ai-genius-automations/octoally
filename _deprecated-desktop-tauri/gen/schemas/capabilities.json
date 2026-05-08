@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for the main window","local":true,"windows":["main"],"permissions":["core:default","core:event:default","shell:allow-open","opener:default","opener:allow-open-url"]}}

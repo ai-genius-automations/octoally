@@ -48,8 +48,10 @@
     "url": "git+https://github.com/ai-genius-automations/octoally.git"
   },
   "overrides": {
-    "hono": ">=4.12.14",
-    "@hono/node-server": ">=1.19.13"
+    "hono": ">=4.12.16",
+    "@hono/node-server": ">=1.19.13",
+    "fast-uri": ">=3.1.2",
+    "ip-address": ">=10.1.1"
   },
   "dependencies": {
     "@xterm/addon-web-links": "^0.12.0"
