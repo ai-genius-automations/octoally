@@ -137,6 +137,26 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ pathA, pathB }),
       }),
+    delete: (path: string) =>
+      fetchJSON<{ ok: boolean }>('/files/delete', {
+        method: 'POST',
+        body: JSON.stringify({ path }),
+      }),
+    rename: (path: string, newName: string) =>
+      fetchJSON<{ ok: boolean; path: string }>('/files/rename', {
+        method: 'POST',
+        body: JSON.stringify({ path, newName }),
+      }),
+    move: (src: string, destDir: string) =>
+      fetchJSON<{ ok: boolean; path: string }>('/files/move', {
+        method: 'POST',
+        body: JSON.stringify({ src, destDir }),
+      }),
+    copy: (src: string, destDir: string) =>
+      fetchJSON<{ ok: boolean; path: string }>('/files/copy', {
+        method: 'POST',
+        body: JSON.stringify({ src, destDir }),
+      }),
   },
   git: {
     status: (path: string) =>

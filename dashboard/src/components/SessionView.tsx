@@ -257,6 +257,13 @@ export function SessionView({ sessionId, projectPath, projectId: _projectId, onE
     setExplorerSavedFile(filePath);
   }, []);
 
+  // "Reveal in explorer" — switch to explorer mode and tell the active explorer to open the file
+  const [openInExplorerRequest, setOpenInExplorerRequest] = useState<{ path: string; key: number } | null>(null);
+  const handleOpenInExplorer = useCallback((filePath: string) => {
+    setActiveMode('explorer');
+    setOpenInExplorerRequest({ path: filePath, key: Date.now() });
+  }, []);
+
   // When switching to git view after explorer saved, trigger refresh
   const prevMode = useRef(activeMode);
   useEffect(() => {
@@ -428,7 +435,7 @@ export function SessionView({ sessionId, projectPath, projectId: _projectId, onE
                 display: activeMode === 'explorer' && activeExplorerId === expl.id ? 'block' : 'none',
               }}
             >
-              <FileExplorer rootPath={projectPath} instanceId={expl.id} refreshFilePath={gitSavedFile} onFileSaved={handleExplorerFileSaved} />
+              <FileExplorer rootPath={projectPath} instanceId={expl.id} refreshFilePath={gitSavedFile} openFileRequest={expl.id === activeExplorerId ? openInExplorerRequest : null} onFileSaved={handleExplorerFileSaved} />
             </div>
           ))}
 
@@ -445,7 +452,7 @@ export function SessionView({ sessionId, projectPath, projectId: _projectId, onE
             className="h-full absolute inset-0"
             style={{ display: activeMode === 'git' ? 'block' : 'none' }}
           >
-            <GitPanel projectPath={projectPath} isVisible={activeMode === 'git'} onFileSaved={handleGitFileSaved} />
+            <GitPanel projectPath={projectPath} isVisible={activeMode === 'git'} onFileSaved={handleGitFileSaved} onOpenInExplorer={handleOpenInExplorer} />
           </div>
         </div>
       </div>

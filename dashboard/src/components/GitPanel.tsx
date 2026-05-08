@@ -18,6 +18,7 @@ import {
   Space,
   FileText,
   Save,
+  FolderTree,
 } from 'lucide-react';
 import { api, type GitFileStatus, type GitCommit, type CommitFile, type GitBranch as GitBranchInfo } from '../lib/api';
 import {
@@ -31,7 +32,7 @@ import {
    Types & helpers
    ================================================================ */
 
-interface GitPanelProps { projectPath: string; isVisible?: boolean; onFileSaved?: (filePath: string) => void; }
+interface GitPanelProps { projectPath: string; isVisible?: boolean; onFileSaved?: (filePath: string) => void; onOpenInExplorer?: (filePath: string) => void; }
 interface CategorizedFile { file: GitFileStatus; statusChar: string; }
 type DetailView =
   | { type: 'diff'; path: string; staged: boolean }
@@ -68,7 +69,7 @@ function statusLabel(s: string) {
    Main component
    ================================================================ */
 
-export function GitPanel({ projectPath, isVisible, onFileSaved }: GitPanelProps) {
+export function GitPanel({ projectPath, isVisible, onFileSaved, onOpenInExplorer }: GitPanelProps) {
   const [branch, setBranch] = useState('');
   const [ahead, setAhead] = useState(0);
   const [behind, setBehind] = useState(0);
@@ -412,6 +413,7 @@ export function GitPanel({ projectPath, isVisible, onFileSaved }: GitPanelProps)
             <FileSection title="Staged" count={staged.length} open={stagedOpen} onToggle={() => setStagedOpen(!stagedOpen)}
               headerActions={<button onClick={() => handleUnstage(staged.map(f => f.file.path))} title="Unstage all" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Minus className="w-3 h-3" /></button>}>
               {staged.map(f => <FileRow key={`s-${f.file.path}`} path={f.file.path} status={f.statusChar} isActive={detail?.type === 'diff' && detail.path === f.file.path && detail.staged} onClick={() => handleViewDiff(f.file.path, true)}
+                onReveal={onOpenInExplorer ? () => onOpenInExplorer(`${projectPath.replace(/\/$/, '')}/${f.file.path}`) : undefined}
                 actions={<button onClick={e => { e.stopPropagation(); handleUnstage([f.file.path]); }} title="Unstage" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Minus className="w-3 h-3" /></button>} />)}
             </FileSection>
           )}
@@ -420,6 +422,7 @@ export function GitPanel({ projectPath, isVisible, onFileSaved }: GitPanelProps)
               headerActions={<><button onClick={() => handleStage(changed.map(f => f.file.path))} title="Stage all" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Plus className="w-3 h-3" /></button><button onClick={() => handleDiscard(changed.map(f => f.file.path))} title="Discard all" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Undo2 className="w-3 h-3" /></button></>}>
               {changed.map(f => <FileRow key={`c-${f.file.path}`} path={f.file.path} status={f.statusChar} isActive={detail?.type === 'diff' && detail.path === f.file.path && !detail.staged} onClick={() => handleViewDiff(f.file.path, false)}
                 selected={selectedFiles.has(f.file.path)} onSelect={() => toggleFileSelect(f.file.path)}
+                onReveal={onOpenInExplorer ? () => onOpenInExplorer(`${projectPath.replace(/\/$/, '')}/${f.file.path}`) : undefined}
                 actions={<><button onClick={e => { e.stopPropagation(); handleStage([f.file.path]); }} title="Stage" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Plus className="w-3 h-3" /></button><button onClick={e => { e.stopPropagation(); handleDiscard([f.file.path]); }} title="Discard" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Undo2 className="w-3 h-3" /></button></>} />)}
             </FileSection>
           )}
@@ -428,6 +431,7 @@ export function GitPanel({ projectPath, isVisible, onFileSaved }: GitPanelProps)
               headerActions={<button onClick={() => handleStage(untracked.map(f => f.file.path))} title="Stage all" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Plus className="w-3 h-3" /></button>}>
               {untracked.map(f => <FileRow key={`u-${f.file.path}`} path={f.file.path} status="?" isActive={false} onClick={() => handleViewDiff(f.file.path, false)}
                 selected={selectedFiles.has(f.file.path)} onSelect={() => toggleFileSelect(f.file.path)}
+                onReveal={onOpenInExplorer ? () => onOpenInExplorer(`${projectPath.replace(/\/$/, '')}/${f.file.path}`) : undefined}
                 actions={<button onClick={e => { e.stopPropagation(); handleStage([f.file.path]); }} title="Stage" className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><Plus className="w-3 h-3" /></button>} />)}
             </FileSection>
           )}
@@ -512,6 +516,9 @@ export function GitPanel({ projectPath, isVisible, onFileSaved }: GitPanelProps)
                 <ToggleBtn active={fullFile} onClick={() => setFullFile(!fullFile)} title={fullFile ? 'Full file context' : 'Diff hunks only'}><FileText className="w-3.5 h-3.5" /></ToggleBtn>
                 <ToggleBtn active={ignoreWhitespace} onClick={() => setIgnoreWhitespace(!ignoreWhitespace)} title={ignoreWhitespace ? 'Ignoring whitespace' : 'Showing all changes'}><Space className="w-3.5 h-3.5" /></ToggleBtn>
                 <div className="w-px h-4 mx-0.5" style={{ background: 'var(--border)' }} />
+                {onOpenInExplorer && detail.type === 'diff' && (
+                  <button onClick={() => onOpenInExplorer(`${projectPath.replace(/\/$/, '')}/${detail.path}`)} title="Reveal in file explorer" className="p-1 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><FolderTree className="w-3.5 h-3.5" /></button>
+                )}
                 <button onClick={() => setDetail(null)} className="p-1 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}><X className="w-3.5 h-3.5" /></button>
               </div>
             </div>
@@ -760,9 +767,9 @@ function FileSection({ title, count, open, onToggle, headerActions, children }: 
   );
 }
 
-function FileRow({ path, status, isActive, onClick, actions, selected, onSelect }: {
+function FileRow({ path, status, isActive, onClick, actions, selected, onSelect, onReveal }: {
   path: string; status: string; isActive: boolean; onClick: () => void; actions: React.ReactNode;
-  selected?: boolean; onSelect?: () => void;
+  selected?: boolean; onSelect?: () => void; onReveal?: () => void;
 }) {
   const fileName = path.split('/').pop() || path;
   const dirPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
@@ -776,7 +783,15 @@ function FileRow({ path, status, isActive, onClick, actions, selected, onSelect 
       )}
       <span className="shrink-0 font-mono font-bold w-4 text-center" style={{ color: statusColor(status) }}>{status}</span>
       <span className="truncate flex-1" style={{ color: 'var(--text-primary)' }}>{fileName}{dirPath && <span className="ml-1" style={{ color: 'var(--text-tertiary)' }}>{dirPath}</span>}</span>
-      <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">{actions}</span>
+      <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        {onReveal && (
+          <button onClick={e => { e.stopPropagation(); onReveal(); }} title="Reveal in file explorer"
+            className="p-0.5 rounded hover:bg-white/10" style={{ color: 'var(--text-secondary)' }}>
+            <FolderTree className="w-3 h-3" />
+          </button>
+        )}
+        {actions}
+      </span>
     </div>
   );
 }

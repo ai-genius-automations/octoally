@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, ChevronUp, Loader2, Save, Circle, Eye, Pencil, Home, X, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, GitCompareArrows } from 'lucide-react';
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, ChevronUp, Loader2, Save, Circle, Eye, Pencil, Home, X, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, GitCompareArrows, FolderOpen as FolderOpenIcon, Terminal, Scissors, Copy as CopyIcon, Clipboard, Trash2, Edit3 } from 'lucide-react';
 import { api, type FileEntry } from '../lib/api';
+import { ConfirmModal } from './ConfirmModal';
 import {
   type HunkInfo,
   parseHunks,
@@ -29,6 +30,7 @@ interface FileExplorerProps {
   rootPath: string;
   instanceId?: string; // unique ID for localStorage persistence
   refreshFilePath?: string | null; // when set, reload this file if it's open and not dirty
+  openFileRequest?: { path: string; key: number } | null; // when key changes, open & reveal this file
   onFileSaved?: (filePath: string) => void; // notify parent when a file is saved
 }
 
@@ -67,6 +69,7 @@ interface PersistedExplorerState {
   currentPath?: string;
   openTabPaths?: { path: string; pinned: boolean }[];
   activeTabPath?: string | null;
+  showHidden?: boolean;
 }
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'mdx', 'markdown']);
@@ -142,26 +145,133 @@ function getExpandedPaths(nodes: TreeNode[]): string[] {
   return paths;
 }
 
+interface ContextMenuItem {
+  kind?: 'item' | 'separator';
+  label?: string;
+  icon?: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+}
+
+function ContextMenu({ x, y, items, onClose }: ContextMenuState & { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x, y });
+
+  useEffect(() => {
+    // Adjust position if menu would overflow viewport
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      let nx = x;
+      let ny = y;
+      if (x + rect.width > window.innerWidth - 8) nx = Math.max(8, window.innerWidth - rect.width - 8);
+      if (y + rect.height > window.innerHeight - 8) ny = Math.max(8, window.innerHeight - rect.height - 8);
+      if (nx !== x || ny !== y) setPos({ x: nx, y: ny });
+    }
+    const onDown = () => onClose();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      className="fixed z-[60] rounded-md shadow-lg py-1 text-xs"
+      style={{
+        left: pos.x,
+        top: pos.y,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        minWidth: 200,
+        color: 'var(--text-primary)',
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {items.map((item, i) => {
+        if (item.kind === 'separator') {
+          return <div key={i} className="my-1" style={{ borderTop: '1px solid var(--border)' }} />;
+        }
+        return (
+          <button
+            key={i}
+            disabled={item.disabled}
+            onClick={() => { if (!item.disabled && item.onClick) { item.onClick(); onClose(); } }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--bg-tertiary)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            style={{ color: item.danger ? 'var(--error)' : 'var(--text-primary)' }}
+          >
+            <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0">{item.icon}</span>
+            <span className="truncate">{item.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function TreeItem({
   node,
   depth,
   onToggle,
   onFileClick,
   onFileDoubleClick,
+  onContextMenu,
   selectedPath,
+  renamingPath,
+  onRenameSubmit,
+  onRenameCancel,
+  cutPath,
 }: {
   node: TreeNode;
   depth: number;
   onToggle: (path: string) => void;
   onFileClick: (path: string) => void;
   onFileDoubleClick: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, node: TreeNode) => void;
   selectedPath: string | null;
+  renamingPath: string | null;
+  onRenameSubmit: (path: string, newName: string) => void;
+  onRenameCancel: () => void;
+  cutPath: string | null;
 }) {
   const isDir = node.entry.type === 'directory';
   const isSelected = node.fullPath === selectedPath;
+  const isRenaming = renamingPath === node.fullPath;
+  const isCut = cutPath === node.fullPath;
   const [loading, setLoading] = useState(false);
+  const [renameValue, setRenameValue] = useState(node.entry.name);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming) {
+      setRenameValue(node.entry.name);
+      // Focus input and select the basename (excluding extension) for files
+      setTimeout(() => {
+        const el = renameInputRef.current;
+        if (!el) return;
+        el.focus();
+        const name = node.entry.name;
+        const dotIdx = !isDir && name.lastIndexOf('.') > 0 ? name.lastIndexOf('.') : name.length;
+        el.setSelectionRange(0, dotIdx);
+      }, 0);
+    }
+  }, [isRenaming, node.entry.name, isDir]);
 
   function handleClick() {
+    if (isRenaming) return;
     if (isDir) {
       setLoading(true);
       onToggle(node.fullPath);
@@ -172,9 +282,19 @@ function TreeItem({
   }
 
   function handleDoubleClick() {
+    if (isRenaming) return;
     if (!isDir) {
       onFileDoubleClick(node.fullPath);
     }
+  }
+
+  function commitRename() {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === node.entry.name) {
+      onRenameCancel();
+      return;
+    }
+    onRenameSubmit(node.fullPath, trimmed);
   }
 
   return (
@@ -182,12 +302,14 @@ function TreeItem({
       <button
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => onContextMenu(e, node)}
         data-filepath={node.fullPath}
         className="flex items-center gap-1 w-full text-left text-xs py-0.5 px-2 hover:bg-[var(--bg-tertiary)] transition-colors"
         style={{
           paddingLeft: `${depth * 16 + 8}px`,
           color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
           background: isSelected ? 'var(--bg-tertiary)' : undefined,
+          opacity: isCut ? 0.5 : 1,
         }}
       >
         {isDir ? (
@@ -212,7 +334,39 @@ function TreeItem({
           <File className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-secondary)' }} />
         )}
 
-        <span className="truncate">{node.entry.name}</span>
+        {isRenaming ? (
+          <input
+            ref={renameInputRef}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onRenameCancel();
+              }
+            }}
+            onBlur={commitRename}
+            className="flex-1 min-w-0 text-xs px-1 py-0 rounded"
+            style={{
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--accent)',
+              outline: 'none',
+              fontFamily: 'inherit',
+            }}
+            spellCheck={false}
+          />
+        ) : (
+          <span className="truncate">{node.entry.name}</span>
+        )}
       </button>
 
       {isDir && node.expanded && node.children?.map((child) => (
@@ -223,21 +377,26 @@ function TreeItem({
           onToggle={onToggle}
           onFileClick={onFileClick}
           onFileDoubleClick={onFileDoubleClick}
+          onContextMenu={onContextMenu}
           selectedPath={selectedPath}
+          renamingPath={renamingPath}
+          onRenameSubmit={onRenameSubmit}
+          onRenameCancel={onRenameCancel}
+          cutPath={cutPath}
         />
       ))}
     </>
   );
 }
 
-export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSaved }: FileExplorerProps) {
+export function FileExplorer({ rootPath, instanceId, refreshFilePath, openFileRequest, onFileSaved }: FileExplorerProps) {
   // Resolve initial path from persisted state or prop
   const [initialState] = useState(() => instanceId ? loadExplorerState(instanceId) : null);
   const [currentPath, setCurrentPath] = useState(initialState?.currentPath ?? rootPath);
   const [pathInput, setPathInput] = useState(initialState?.currentPath ?? rootPath);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [rootLoaded, setRootLoaded] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
+  const [showHidden, setShowHidden] = useState(initialState?.showHidden ?? false);
   const restoringRef = useRef(false);
   const treeScrollRef = useRef<HTMLDivElement>(null);
 
@@ -296,6 +455,19 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
   const [fileError, setFileError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Context menu / file ops state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ path: string; isDir: boolean } | null>(null);
+  const [clipboard, setClipboard] = useState<{ kind: 'cut' | 'copy'; path: string; isDir: boolean } | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!actionMessage) return;
+    const t = setTimeout(() => setActionMessage(null), 3500);
+    return () => clearTimeout(t);
+  }, [actionMessage]);
 
   // Derived state
   const activeTab = tabs.find(t => t.path === activeTabPath) ?? null;
@@ -651,6 +823,19 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleSave]);
 
+  // External "open this file" request — e.g. user clicked an icon in the git panel
+  const lastOpenRequestKey = useRef<number | null>(null);
+  useEffect(() => {
+    if (!openFileRequest) return;
+    if (openFileRequest.key === lastOpenRequestKey.current) return;
+    lastOpenRequestKey.current = openFileRequest.key;
+    // Defer until root has loaded so reveal can find the node
+    if (!rootLoaded) return;
+    openFile(openFileRequest.path, true);
+    // openFile sets activeTabPath, which the existing reveal effect picks up
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFileRequest, rootLoaded]);
+
   // Refresh open tab when another view (e.g. git diff) saved it
   const lastRefreshPath = useRef<string | null>(null);
   useEffect(() => {
@@ -680,8 +865,9 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
       currentPath,
       openTabPaths: tabs.map(t => ({ path: t.path, pinned: t.pinned })),
       activeTabPath,
+      showHidden,
     });
-  }, [instanceId, tree, activeTabPath, rootLoaded, currentPath, tabs]);
+  }, [instanceId, tree, activeTabPath, rootLoaded, currentPath, tabs, showHidden]);
 
   // Load root directory and restore persisted state
   const loadRoot = useCallback(async () => {
@@ -879,6 +1065,201 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
     });
   }
 
+  function getParentDir(p: string): string {
+    const idx = p.lastIndexOf('/');
+    if (idx <= 0) return '/';
+    return p.slice(0, idx);
+  }
+
+  // Reload one directory in the tree (or the whole root when dir === currentPath).
+  // Preserves expanded state of unaffected subtrees by only replacing the children of the target.
+  async function refreshDirectory(dir: string) {
+    if (dir === currentPath) {
+      setTree([]);
+      setRootLoaded(false);
+      return;
+    }
+    try {
+      const data = await api.files.list(dir, showHidden);
+      setTree(prev => {
+        const node = findNodeInTree(prev, dir);
+        if (!node) return prev;
+        // Map new entries; preserve expanded/loaded/children for matching subdirs so we don't collapse the tree.
+        const existingChildren = node.children ?? [];
+        const newChildren: TreeNode[] = data.files.map(f => {
+          const childPath = `${dir}/${f.name}`;
+          const existing = existingChildren.find(c => c.fullPath === childPath);
+          if (existing && existing.entry.type === f.type) {
+            return { ...existing, entry: f };
+          }
+          return {
+            entry: f,
+            fullPath: childPath,
+            children: undefined,
+            loaded: false,
+            expanded: false,
+          };
+        });
+        return updateNodeInTree(prev, dir, {
+          children: newChildren,
+          loaded: true,
+          expanded: true,
+        });
+      });
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || 'Failed to refresh directory' });
+    }
+  }
+
+  function openContextMenuFor(e: React.MouseEvent, node: TreeNode | null) {
+    e.preventDefault();
+    e.stopPropagation();
+    const isDir = node ? node.entry.type === 'directory' : true;
+    const targetPath = node?.fullPath ?? currentPath;
+    const containingDir = node ? (isDir ? node.fullPath : getParentDir(node.fullPath)) : currentPath;
+
+    const items: ContextMenuItem[] = [
+      {
+        kind: 'item',
+        label: 'Open in OS file manager',
+        icon: <FolderOpenIcon className="w-3.5 h-3.5" />,
+        onClick: () => handleOpenInFolder(containingDir),
+      },
+      {
+        kind: 'item',
+        label: 'Open in terminal',
+        icon: <Terminal className="w-3.5 h-3.5" />,
+        onClick: () => handleOpenInTerminal(containingDir),
+      },
+    ];
+
+    if (node) {
+      items.push({ kind: 'separator' });
+      items.push({
+        kind: 'item',
+        label: 'Cut',
+        icon: <Scissors className="w-3.5 h-3.5" />,
+        onClick: () => setClipboard({ kind: 'cut', path: node.fullPath, isDir }),
+      });
+      items.push({
+        kind: 'item',
+        label: 'Copy',
+        icon: <CopyIcon className="w-3.5 h-3.5" />,
+        onClick: () => setClipboard({ kind: 'copy', path: node.fullPath, isDir }),
+      });
+    }
+
+    // Paste — only meaningful when target is a directory (or empty area)
+    items.push({
+      kind: 'item',
+      label: clipboard ? `Paste ${clipboard.kind === 'cut' ? '(move)' : '(copy)'}` : 'Paste',
+      icon: <Clipboard className="w-3.5 h-3.5" />,
+      onClick: () => handlePaste(containingDir),
+      disabled: !clipboard || (!isDir && !!node),
+    });
+
+    if (node) {
+      items.push({ kind: 'separator' });
+      items.push({
+        kind: 'item',
+        label: 'Rename',
+        icon: <Edit3 className="w-3.5 h-3.5" />,
+        onClick: () => setRenamingPath(node.fullPath),
+      });
+      items.push({
+        kind: 'item',
+        label: 'Delete',
+        icon: <Trash2 className="w-3.5 h-3.5" />,
+        danger: true,
+        onClick: () => setPendingDelete({ path: targetPath, isDir }),
+      });
+    }
+
+    setContextMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  async function handleOpenInFolder(path: string) {
+    try {
+      await api.openFolder(path);
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || 'Failed to open folder' });
+    }
+  }
+
+  async function handleOpenInTerminal(path: string) {
+    try {
+      await api.openTerminal(path);
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || 'Failed to open terminal' });
+    }
+  }
+
+  async function submitRename(path: string, newName: string) {
+    setRenamingPath(null);
+    try {
+      const result = await api.files.rename(path, newName);
+      // If a tab was open for the renamed file, update its path
+      setTabs(prev => prev.map(t => t.path === path ? { ...t, path: result.path, name: newName } : t));
+      if (activeTabPath === path) setActiveTabPath(result.path);
+      // Clear clipboard reference if it pointed at the renamed item
+      if (clipboard?.path === path) setClipboard(null);
+      await refreshDirectory(getParentDir(path));
+      setActionMessage({ kind: 'info', text: `Renamed to ${newName}` });
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || 'Failed to rename' });
+    }
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const { path, isDir } = pendingDelete;
+    setPendingDelete(null);
+    try {
+      await api.files.delete(path);
+      // Close any tab pointing at the deleted file/folder
+      setTabs(prev => prev.filter(t => t.path !== path && !t.path.startsWith(path + '/')));
+      if (activeTabPath === path || activeTabPath?.startsWith(path + '/')) setActiveTabPath(null);
+      if (clipboard?.path === path) setClipboard(null);
+      await refreshDirectory(getParentDir(path));
+      setActionMessage({ kind: 'info', text: `Deleted ${isDir ? 'folder' : 'file'}` });
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || 'Failed to delete' });
+    }
+  }
+
+  async function handlePaste(destDir: string) {
+    if (!clipboard) return;
+    const src = clipboard.path;
+    const kind = clipboard.kind;
+    const sourceParent = getParentDir(src);
+
+    try {
+      if (kind === 'cut') {
+        await api.files.move(src, destDir);
+        // Update any open tab whose path is being moved
+        const newBase = `${destDir}/${src.split('/').pop()}`;
+        setTabs(prev => prev.map(t => {
+          if (t.path === src) return { ...t, path: newBase };
+          if (t.path.startsWith(src + '/')) return { ...t, path: newBase + t.path.slice(src.length) };
+          return t;
+        }));
+        if (activeTabPath === src) setActiveTabPath(newBase);
+        else if (activeTabPath?.startsWith(src + '/')) setActiveTabPath(newBase + activeTabPath.slice(src.length));
+        setClipboard(null);
+      } else {
+        await api.files.copy(src, destDir);
+      }
+      // Refresh both source and destination directory views
+      if (sourceParent !== destDir) {
+        await refreshDirectory(sourceParent);
+      }
+      await refreshDirectory(destDir);
+      setActionMessage({ kind: 'info', text: kind === 'cut' ? 'Moved' : 'Copied' });
+    } catch (err: any) {
+      setActionMessage({ kind: 'error', text: err.message || `Failed to ${kind === 'cut' ? 'move' : 'copy'}` });
+    }
+  }
+
   // Build CodeMirror extensions for active tab
   const extensions = [];
   if (activeTab) {
@@ -944,7 +1325,14 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
           />
         </form>
 
-        <div ref={treeScrollRef} className="flex-1 overflow-y-auto">
+        <div
+          ref={treeScrollRef}
+          className="flex-1 overflow-y-auto"
+          onContextMenu={(e) => {
+            // Right-click on empty area of the tree panel — context for currentPath
+            if (e.target === e.currentTarget) openContextMenuFor(e, null);
+          }}
+        >
         {tree.map((node) => (
           <TreeItem
             key={node.fullPath}
@@ -953,7 +1341,12 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
             onToggle={toggleDir}
             onFileClick={handleFileClick}
             onFileDoubleClick={handleFileDoubleClick}
+            onContextMenu={openContextMenuFor}
             selectedPath={activeTabPath}
+            renamingPath={renamingPath}
+            onRenameSubmit={submitRename}
+            onRenameCancel={() => setRenamingPath(null)}
+            cutPath={clipboard?.kind === 'cut' ? clipboard.path : null}
           />
         ))}
         {tree.length === 0 && rootLoaded && (
@@ -962,6 +1355,19 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
           </div>
         )}
         </div>
+        {actionMessage && (
+          <div
+            className="px-2 py-1.5 text-xs shrink-0 truncate"
+            style={{
+              borderTop: '1px solid var(--border)',
+              color: actionMessage.kind === 'error' ? 'var(--error)' : 'var(--text-secondary)',
+              background: 'var(--bg-secondary)',
+            }}
+            title={actionMessage.text}
+          >
+            {actionMessage.text}
+          </div>
+        )}
       </div>
 
       {/* Resize handle */}
@@ -1190,6 +1596,30 @@ export function FileExplorer({ rootPath, instanceId, refreshFilePath, onFileSave
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          title={pendingDelete.isDir ? 'Delete folder?' : 'Delete file?'}
+          message={
+            pendingDelete.isDir
+              ? `Permanently delete "${pendingDelete.path.split('/').pop()}" and all of its contents? This cannot be undone.`
+              : `Permanently delete "${pendingDelete.path.split('/').pop()}"? This cannot be undone.`
+          }
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 }

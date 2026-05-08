@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
-import { readdir, stat, readFile, writeFile } from 'fs/promises';
-import { join, resolve, extname } from 'path';
+import { readdir, stat, readFile, writeFile, rm, rename, cp } from 'fs/promises';
+import { join, resolve, extname, dirname, basename } from 'path';
 import { exec } from 'child_process';
 
 interface FileEntry {
@@ -146,6 +146,173 @@ export const fileRoutes: FastifyPluginAsync = async (app) => {
         }
       );
     });
+  });
+
+  // Delete a file or directory (recursive for directories)
+  app.post<{
+    Body: { path: string };
+  }>('/files/delete', async (req, reply) => {
+    const { path: targetPath } = req.body || {};
+    if (!targetPath) return reply.status(400).send({ error: 'path is required' });
+    const resolved = resolve(targetPath);
+
+    try {
+      await stat(resolved);
+    } catch {
+      return reply.status(404).send({ error: 'Path not found' });
+    }
+
+    try {
+      await rm(resolved, { recursive: true, force: false });
+      return { ok: true };
+    } catch (err: any) {
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        return reply.status(403).send({ error: 'Permission denied', detail: err.message });
+      }
+      return reply.status(500).send({ error: 'Failed to delete', detail: err.message });
+    }
+  });
+
+  // Rename a file or directory in place (sibling rename only)
+  app.post<{
+    Body: { path: string; newName: string };
+  }>('/files/rename', async (req, reply) => {
+    const { path: targetPath, newName } = req.body || {};
+    if (!targetPath) return reply.status(400).send({ error: 'path is required' });
+    if (!newName || typeof newName !== 'string') return reply.status(400).send({ error: 'newName is required' });
+    if (newName.includes('/') || newName.includes('\\') || newName === '.' || newName === '..') {
+      return reply.status(400).send({ error: 'Invalid name (must not contain path separators)' });
+    }
+
+    const resolvedSrc = resolve(targetPath);
+    const dest = join(dirname(resolvedSrc), newName);
+
+    try {
+      await stat(resolvedSrc);
+    } catch {
+      return reply.status(404).send({ error: 'Source not found' });
+    }
+
+    // Refuse if destination already exists (prevent silent overwrite)
+    try {
+      await stat(dest);
+      return reply.status(409).send({ error: 'A file or folder with that name already exists' });
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        return reply.status(500).send({ error: 'Failed to check destination', detail: err.message });
+      }
+    }
+
+    try {
+      await rename(resolvedSrc, dest);
+      return { ok: true, path: dest };
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Failed to rename', detail: err.message });
+    }
+  });
+
+  // Move a file or directory (cut + paste). Falls back to copy+delete across volumes.
+  app.post<{
+    Body: { src: string; destDir: string };
+  }>('/files/move', async (req, reply) => {
+    const { src, destDir } = req.body || {};
+    if (!src || !destDir) return reply.status(400).send({ error: 'src and destDir are required' });
+
+    const resolvedSrc = resolve(src);
+    const resolvedDestDir = resolve(destDir);
+    const dest = join(resolvedDestDir, basename(resolvedSrc));
+
+    if (resolvedSrc === dest) {
+      return reply.status(400).send({ error: 'Source and destination are the same' });
+    }
+    // Prevent moving a directory into itself or its descendants
+    if (resolvedDestDir === resolvedSrc || resolvedDestDir.startsWith(resolvedSrc + '/')) {
+      return reply.status(400).send({ error: 'Cannot move a folder into itself' });
+    }
+
+    try {
+      await stat(resolvedSrc);
+    } catch {
+      return reply.status(404).send({ error: 'Source not found' });
+    }
+    try {
+      const ds = await stat(resolvedDestDir);
+      if (!ds.isDirectory()) return reply.status(400).send({ error: 'Destination is not a directory' });
+    } catch {
+      return reply.status(404).send({ error: 'Destination directory not found' });
+    }
+    try {
+      await stat(dest);
+      return reply.status(409).send({ error: 'A file or folder with that name already exists at the destination' });
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        return reply.status(500).send({ error: 'Failed to check destination', detail: err.message });
+      }
+    }
+
+    try {
+      await rename(resolvedSrc, dest);
+      return { ok: true, path: dest };
+    } catch (err: any) {
+      // Cross-device — fall back to copy + delete
+      if (err.code === 'EXDEV') {
+        try {
+          await cp(resolvedSrc, dest, { recursive: true, errorOnExist: true, force: false });
+          await rm(resolvedSrc, { recursive: true, force: false });
+          return { ok: true, path: dest };
+        } catch (err2: any) {
+          return reply.status(500).send({ error: 'Failed to move across volumes', detail: err2.message });
+        }
+      }
+      return reply.status(500).send({ error: 'Failed to move', detail: err.message });
+    }
+  });
+
+  // Copy a file or directory (recursive). Refuses to overwrite existing destination.
+  app.post<{
+    Body: { src: string; destDir: string };
+  }>('/files/copy', async (req, reply) => {
+    const { src, destDir } = req.body || {};
+    if (!src || !destDir) return reply.status(400).send({ error: 'src and destDir are required' });
+
+    const resolvedSrc = resolve(src);
+    const resolvedDestDir = resolve(destDir);
+    const dest = join(resolvedDestDir, basename(resolvedSrc));
+
+    if (resolvedSrc === dest) {
+      return reply.status(400).send({ error: 'Source and destination are the same' });
+    }
+    // Prevent copying a directory into itself or its descendants
+    if (resolvedDestDir === resolvedSrc || resolvedDestDir.startsWith(resolvedSrc + '/')) {
+      return reply.status(400).send({ error: 'Cannot copy a folder into itself' });
+    }
+
+    try {
+      await stat(resolvedSrc);
+    } catch {
+      return reply.status(404).send({ error: 'Source not found' });
+    }
+    try {
+      const ds = await stat(resolvedDestDir);
+      if (!ds.isDirectory()) return reply.status(400).send({ error: 'Destination is not a directory' });
+    } catch {
+      return reply.status(404).send({ error: 'Destination directory not found' });
+    }
+    try {
+      await stat(dest);
+      return reply.status(409).send({ error: 'A file or folder with that name already exists at the destination' });
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        return reply.status(500).send({ error: 'Failed to check destination', detail: err.message });
+      }
+    }
+
+    try {
+      await cp(resolvedSrc, dest, { recursive: true, errorOnExist: true, force: false });
+      return { ok: true, path: dest };
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Failed to copy', detail: err.message });
+    }
   });
 
   // Open VS Code at a given path
