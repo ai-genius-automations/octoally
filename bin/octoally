@@ -190,7 +190,12 @@ cmd_start() {
     fi
   fi
 
-  env NODE_ENV=production node dist/index.js >> "$OCTOALLY_DIR/logs/octoally.log" 2>&1 &
+  # Scrub NODE_OPTIONS: if octoally was launched from a shell with a
+  # context-mode/claude-mem preload active, NODE_OPTIONS carries a per-PID
+  # --require shim in /tmp that dies with that shell. Inheriting it makes the
+  # server hand a dead module path to every spawned session, crashing them
+  # with "Cannot find module /tmp/cm-fs-preload-*.js". -u keeps it out.
+  env -u NODE_OPTIONS NODE_ENV=production node dist/index.js >> "$OCTOALLY_DIR/logs/octoally.log" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
   log_ok "OctoAlly started (PID $pid)"
@@ -487,7 +492,8 @@ cmd_logs() {
   else
     log_info "Starting server in foreground (Ctrl+C to stop)..."
     cd "$OCTOALLY_DIR/server"
-    env NODE_ENV=production node dist/index.js
+    # See cmd_start: scrub a stale context-mode/claude-mem NODE_OPTIONS preload.
+    env -u NODE_OPTIONS NODE_ENV=production node dist/index.js
   fi
 }
 
