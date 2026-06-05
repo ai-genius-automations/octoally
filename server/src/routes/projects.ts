@@ -243,6 +243,19 @@ export interface Project {
   updated_at: string;
 }
 
+/**
+ * Normalize a project path before it touches the DB.
+ * Strips trailing slashes (the #1 cause of `/home/marty/repos/`-style entries,
+ * which the folder picker never produces but free-text typing does) and trims
+ * whitespace. Keeps the value otherwise verbatim — we do NOT reject here, since
+ * validation is warn-only by design (the folder may be created later).
+ */
+function normalizeProjectPath(p: string): string {
+  const trimmed = (p || '').trim();
+  if (trimmed === '/' || trimmed === '') return trimmed;
+  return trimmed.replace(/\/+$/, '');
+}
+
 /** ~/.octoally/projects.json — portable backup, not the source of truth */
 const OCTOALLY_DIR = join(homedir(), '.octoally');
 const PROJECTS_FILE = join(OCTOALLY_DIR, 'projects.json');
@@ -311,7 +324,8 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
   app.post<{
     Body: { name: string; path: string; description?: string; session_prompt?: string; openclaw_prompt?: string; default_web_url?: string; color?: string };
   }>('/projects', async (req, reply) => {
-    const { name, path, description, session_prompt, openclaw_prompt, default_web_url, color } = req.body;
+    const { name, description, session_prompt, openclaw_prompt, default_web_url, color } = req.body;
+    const path = normalizeProjectPath(req.body.path);
     if (!name || !path) return reply.status(400).send({ error: 'name and path are required' });
 
     const db = getDb();
@@ -335,13 +349,26 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
   // Update project
   app.patch<{
     Params: { id: string };
-    Body: { name?: string; description?: string; session_prompt?: string | null; openclaw_prompt?: string | null; default_web_url?: string | null; skip_permissions?: number; color?: string };
+    Body: { name?: string; path?: string; description?: string; session_prompt?: string | null; openclaw_prompt?: string | null; default_web_url?: string | null; skip_permissions?: number; color?: string };
   }>('/projects/:id', async (req, reply) => {
     const db = getDb();
     const updates: string[] = [];
     const params: unknown[] = [];
 
     if (req.body.name) { updates.push('name = ?'); params.push(req.body.name); }
+    // Repoint the project at a different working directory. Files are NOT moved —
+    // this only updates where OctoAlly looks. Normalized (trailing-slash stripped)
+    // and required non-empty; existence/duplication is surfaced as a warning in the
+    // UI, not enforced here.
+    if (req.body.path !== undefined) {
+      const p = normalizeProjectPath(req.body.path);
+      if (!p) return reply.status(400).send({ error: 'path cannot be empty' });
+      // projects.path is UNIQUE — translate an exact collision into a clean 409
+      // instead of letting the constraint surface as a 500.
+      const clash = db.prepare('SELECT id FROM projects WHERE path = ? AND id <> ?').get(p, req.params.id);
+      if (clash) return reply.status(409).send({ error: 'Another project already uses this path' });
+      updates.push('path = ?'); params.push(p);
+    }
     if (req.body.description !== undefined) { updates.push('description = ?'); params.push(req.body.description); }
     if (req.body.session_prompt !== undefined) { updates.push('session_prompt = ?'); params.push(req.body.session_prompt); }
     if (req.body.openclaw_prompt !== undefined) { updates.push('openclaw_prompt = ?'); params.push(req.body.openclaw_prompt); }
