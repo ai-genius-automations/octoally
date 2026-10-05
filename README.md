@@ -234,11 +234,13 @@ cp .env.example .env
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `42010` | Server port |
-| `OCTOALLY_TOKEN` | *(none)* | Auth token for API/WebSocket — leave empty for local use |
+| `HOST` | `localhost` | Bind address. Defaults to loopback only (127.0.0.1 and ::1) |
 | `DB_PATH` | `~/.octoally/octoally.db` | SQLite database path |
 | `LOG_LEVEL` | `info` | Log verbosity (`trace` / `debug` / `info` / `warn` / `error`) |
 | `OCTOALLY_USE_TMUX` | `true` | Use tmux for session management |
 | `OCTOALLY_USE_DTACH` | `true` | Use dtach for session persistence |
+
+The server is local-only by default: it listens on loopback and rejects requests with a non-loopback `Host` or `Origin` header. The API has **no authentication** — setting `HOST=0.0.0.0` (or any non-loopback address) lets anyone who can reach the port read/write files and run commands on your machine. Not recommended.
 
 ---
 

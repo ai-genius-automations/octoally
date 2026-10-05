@@ -94,14 +94,14 @@ if (wantTmux && !hasTmux) {
 
 export const config = {
   port: parseInt(process.env.PORT || '42010', 10),
-  // Listen on :: (dual-stack) to accept both IPv4 and IPv6 connections.
-  // This lets the browser use 127.0.0.1 and [::1] as separate hosts,
-  // doubling the per-host connection limit (6→12) and preventing
-  // WebSocket connection queuing when many terminals are open.
-  host: process.env.HOST || '::',
+  // Listen on loopback only — the API is unauthenticated. 'localhost' binds
+  // both 127.0.0.1 and ::1 (see index.ts), which still lets the browser use
+  // 127.0.0.1 and [::1] as separate hosts, doubling the per-host connection
+  // limit (6→12) and preventing WebSocket connection queuing when many
+  // terminals are open. Set HOST to override (e.g. 0.0.0.0 exposes the API).
+  host: process.env.HOST || 'localhost',
   isDev: process.env.NODE_ENV !== 'production',
   logLevel: process.env.LOG_LEVEL || 'info',
-  authToken: process.env.OCTOALLY_TOKEN || process.env.HIVECOMMAND_TOKEN || process.env.OPENFLOW_TOKEN || null,
   dbPath: process.env.DB_PATH || (() => {
     const dir = join(homedir(), '.octoally');
     mkdirSync(dir, { recursive: true });

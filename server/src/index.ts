@@ -33,10 +33,21 @@ import type { AppRouter } from './trpc/router.js';
 import { killAllSessions, cleanupStaleRunningSessions, autoReconnectDetachedSessions, getReconnectStatus, startPendingSessionWatchdog } from './services/session-manager.js';
 import { config } from './config.js';
 import { appendFileSync, writeFileSync } from 'fs';
+import { createServer as createNetServer } from 'net';
 import { installDefaultAgents } from './data/default-agents.js';
 const tlog = (s: string) => { try { appendFileSync('/tmp/octoally-timing.log', `[${new Date().toISOString()}] ${s}\n`); } catch {} };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+}
+
+/** Strip the port from a Host header value ("[::1]:42010" → "[::1]") */
+function hostnameOf(host: string): string {
+  return host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+}
 
 // Event loop lag detector — logs when the event loop is blocked for >100ms
 let _lagLast = Date.now();
@@ -99,6 +110,30 @@ async function start() {
   // Watchdog: auto-fail sessions stuck in "pending" for >90s (e.g. browser closed
   // before WebSocket connected, or spawn command hangs on registry check/npm install)
   startPendingSessionWatchdog();
+
+  // Local-only guard (HTTP + WebSocket upgrades). The API is unauthenticated, so
+  // reject requests whose Host isn't loopback (DNS rebinding) and browser requests
+  // from non-loopback origins (CSRF / cross-site WebSocket hijacking). Requests
+  // without an Origin header (curl, hooks, server-to-server) are allowed.
+  // If HOST was set to a non-loopback address the user opted into network access,
+  // so the Host check is skipped and same-origin requests are allowed.
+  const exposed = !isLoopbackHost(config.host);
+  app.addHook('onRequest', async (req, reply) => {
+    const host = req.headers.host || '';
+    if (!exposed && !isLoopbackHost(hostnameOf(host))) {
+      return reply.status(403).send({ error: 'Forbidden host' });
+    }
+    const origin = req.headers.origin;
+    if (origin) {
+      let parsed: URL | null = null;
+      try { parsed = new URL(origin); } catch {}
+      const ok = parsed !== null && (
+        (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)) ||
+        (exposed && parsed.host === host)
+      );
+      if (!ok) return reply.status(403).send({ error: 'Forbidden origin' });
+    }
+  });
 
   // Plugins
   await app.register(cors, {
@@ -285,9 +320,10 @@ async function start() {
   });
 
   // Network info — returns local IP addresses for the settings UI hint
+  // (empty when listening on loopback only, since those URLs wouldn't work)
   app.get('/api/network-info', async () => {
     const { networkInterfaces } = await import('os');
-    const nets = networkInterfaces();
+    const nets = exposed ? networkInterfaces() : {};
     const addresses: string[] = [];
     for (const iface of Object.values(nets)) {
       if (!iface) continue;
@@ -327,9 +363,28 @@ async function start() {
 
   // Start
   t = Date.now();
-  await app.listen({ port: config.port, host: config.host });
+  if (config.host === 'localhost') {
+    // Bind 127.0.0.1 and ::1 explicitly — Fastify resolves 'localhost' via
+    // /etc/hosts, which often maps it to 127.0.0.1 only. The ::1 listener
+    // hands its sockets to the same HTTP server (incl. WebSocket upgrades).
+    await app.listen({ port: config.port, host: '127.0.0.1' });
+    await new Promise<void>((done) => {
+      const v6 = createNetServer((socket) => app.server.emit('connection', socket));
+      v6.on('error', (err) => {
+        app.log.warn(`Could not listen on [::1]:${config.port} (${err.message}) — IPv4 loopback only`);
+        done();
+      });
+      v6.listen(config.port, '::1', () => done());
+    });
+  } else {
+    await app.listen({ port: config.port, host: config.host });
+  }
   tlog(`[STARTUP] listen: ${Date.now() - t}ms`);
   tlog(`[STARTUP] server ready, accepting connections`);
+  if (exposed) {
+    console.warn(`\n⚠️  HOST=${config.host}: the OctoAlly API is unauthenticated and reachable from the network.`);
+    console.warn(`   Anyone who can reach port ${config.port} can read/write files and run commands. Unset HOST to stay local-only.`);
+  }
   console.log(`\n🌊 OctoAlly running at http://localhost:${config.port}`);
   console.log(`   API: http://localhost:${config.port}/api`);
   if (config.isDev) {
