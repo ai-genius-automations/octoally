@@ -36,9 +36,9 @@
     "deploy:ui": "npm run build:dashboard && rsync -a --delete dashboard/dist/ \"$HOME/octoally/dashboard/dist/\""
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "better-sqlite3": "^12.8.0",
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.2.4"
   },
   "author": "AI Genius Automations <support@aigeniusautomations.com>",
   "license": "Apache-2.0 WITH Commons-Clause",
@@ -48,10 +48,10 @@
     "url": "git+https://github.com/ai-genius-automations/octoally.git"
   },
   "overrides": {
-    "hono": ">=4.12.16",
-    "@hono/node-server": ">=1.19.13",
-    "fast-uri": ">=3.1.2",
-    "ip-address": ">=10.1.1"
+    "hono": "^4.13.7",
+    "@hono/node-server": "^1.19.15",
+    "fast-uri": "^3.1.8",
+    "ip-address": "^10.7.1"
   },
   "dependencies": {
     "@xterm/addon-web-links": "^0.12.0"
